@@ -1917,6 +1917,9 @@ impl App {
         let Some((ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
+        if let Some(refusal) = self.core_input_refusal(ws_idx, pane_id) {
+            return encode_error(id, refusal.code, refusal.message);
+        }
         let Some(runtime) = self.lookup_runtime_sender(ws_idx, pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
@@ -1935,6 +1938,9 @@ impl App {
         let Some((ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
+        if let Some(refusal) = self.core_input_refusal(ws_idx, pane_id) {
+            return encode_error(id, refusal.code, refusal.message);
+        }
         let Some(runtime) = self.lookup_runtime_sender(ws_idx, pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
@@ -2040,6 +2046,9 @@ impl App {
         let Some((ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
+        if let Some(refusal) = self.core_input_refusal(ws_idx, pane_id) {
+            return encode_error(id, refusal.code, refusal.message);
+        }
         let Some(runtime) = self.lookup_runtime_sender(ws_idx, pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
@@ -2424,6 +2433,83 @@ mod tests {
     fn metadata_error_code(response: &str) -> String {
         let response: ErrorResponse = serde_json::from_str(response).unwrap();
         response.error.code
+    }
+
+    #[tokio::test]
+    async fn api_input_to_a_core_pane_that_cannot_type_is_an_error_not_a_success() {
+        use crate::core_client::model::{
+            CoreMode, CorePaneBinding, CorePanePhase, CoreTerminalKey,
+        };
+        fn bind(app: &mut App, mode: CoreMode, phase: CorePanePhase) {
+            let tab = &app.state.workspaces[0].tabs[0];
+            let terminal_id = tab.panes[&tab.root_pane].attached_terminal_id.clone();
+            let key = CoreTerminalKey {
+                origin_core_id: "core-a".into(),
+                origin_address: "t1".into(),
+            };
+            let mut binding = CorePaneBinding::new(key, "t1".into(), mode);
+            binding.phase = phase;
+            app.state.terminals.get_mut(&terminal_id).unwrap().core = Some(binding);
+        }
+        fn codes(app: &mut App, pane_id: &str) -> [String; 3] {
+            let methods = [
+                crate::api::schema::Method::PaneSendText(PaneSendTextParams {
+                    pane_id: pane_id.into(),
+                    text: "x".into(),
+                }),
+                crate::api::schema::Method::PaneSendInput(PaneSendInputParams {
+                    pane_id: pane_id.into(),
+                    text: "x".into(),
+                    keys: vec!["Enter".into()],
+                }),
+                crate::api::schema::Method::PaneSendKeys(PaneSendKeysParams {
+                    pane_id: pane_id.into(),
+                    keys: vec!["Enter".into()],
+                }),
+            ];
+            methods.map(|method| {
+                let response = app.handle_api_request(crate::api::schema::Request {
+                    id: "req".into(),
+                    method,
+                });
+                serde_json::from_str::<ErrorResponse>(&response)
+                    .map(|response| response.error.code)
+                    .unwrap_or_else(|_| "ok".into())
+            })
+        }
+        let (mut app, pane_id, mut rx) = app_with_send_key_runtime(8);
+        for (mode, phase, expected) in [
+            (
+                CoreMode::Observe,
+                CorePanePhase::Attached,
+                "pane_observe_only",
+            ),
+            (CoreMode::Control, CorePanePhase::Pending, "pane_not_ready"),
+            (
+                CoreMode::Control,
+                CorePanePhase::Interrupted,
+                "pane_not_ready",
+            ),
+            // Attached, but the connection is not up.
+            (CoreMode::Control, CorePanePhase::Attached, "pane_not_ready"),
+            (
+                CoreMode::Control,
+                CorePanePhase::Ended("exited 0".into()),
+                "pane_ended",
+            ),
+        ] {
+            bind(&mut app, mode, phase);
+            assert_eq!(codes(&mut app, &pane_id), [expected; 3].map(String::from));
+        }
+        assert!(rx.try_recv().is_err(), "nothing may be typed");
+
+        // A pending core pane has no runtime yet: not ready, not missing.
+        let (mut app, pane_id) = app_with_test_workspace();
+        bind(&mut app, CoreMode::Control, CorePanePhase::Pending);
+        assert_eq!(
+            codes(&mut app, &pane_id),
+            ["pane_not_ready"; 3].map(String::from)
+        );
     }
 
     #[tokio::test]

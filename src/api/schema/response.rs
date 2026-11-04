@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use super::agents::AgentInfo;
 use super::common::{ClientWindowTitleReason, NotificationShowReason};
+use super::core_terminals::{
+    CoreOpenedInfo, CoreRunFirstMessage, CoreRunTerminal, CoreStatusInfo, CoreTerminalInfo,
+};
 use super::events::EventEnvelope;
 use super::integrations::{
     IntegrationInstallResult, IntegrationTarget, IntegrationUninstallResult,
@@ -278,6 +281,35 @@ pub enum ResponseResult {
         projection_revision: u64,
     },
     Ok {},
+    CoreStatus {
+        status: CoreStatusInfo,
+    },
+    CoreTerminalList {
+        terminals: Vec<CoreTerminalInfo>,
+    },
+    CoreTerminalOpened {
+        opened: CoreOpenedInfo,
+    },
+    CoreTerminalRun {
+        terminal: CoreRunTerminal,
+        /// A template run's first message. `sent: false` means the terminal
+        /// runs but was not asked yet; send it there, do not run it again.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        first_message: Option<CoreRunFirstMessage>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        opened: Option<CoreOpenedInfo>,
+        /// The terminal started but could not be shown; run nothing again,
+        /// open it instead.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        open_error: Option<ErrorBody>,
+    },
+    CoreAttention {
+        count: usize,
+        /// One line for a status bar: empty when none, `hc ?` when not connected.
+        line: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        opened: Option<CoreOpenedInfo>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

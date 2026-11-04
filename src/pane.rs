@@ -26,6 +26,7 @@ use crate::render_signal::RenderSignal;
 
 mod agent_detection;
 mod background_agent;
+pub(crate) mod core_stream;
 mod cursor;
 mod input;
 mod kitty_keyboard;
@@ -95,6 +96,19 @@ where
         let _permit = permit;
         operation()
     })
+}
+
+/// Herdr's terminal identity, as a pane's program sees it.
+pub(crate) fn pane_terminal_identity_env() -> Vec<(String, String)> {
+    vec![
+        ("TERM".into(), PANE_TERM.into()),
+        ("COLORTERM".into(), PANE_COLORTERM.into()),
+        ("TERM_PROGRAM".into(), "herdr".into()),
+        (
+            "TERM_PROGRAM_VERSION".into(),
+            crate::build_info::version().to_string(),
+        ),
+    ]
 }
 
 fn apply_pane_terminal_env(cmd: &mut CommandBuilder) {
@@ -1523,6 +1537,8 @@ pub struct PaneRuntime {
 
 enum PaneRuntimeIo {
     Actor(PtyIoActorHandle),
+    /// A herdr-core terminal shown in this pane; no local process.
+    Core(core_stream::CoreStreamIo),
     #[cfg(test)]
     TestChannel {
         sender: mpsc::Sender<Bytes>,
@@ -1534,6 +1550,7 @@ impl PaneRuntimeIo {
     fn shutdown(&self) {
         match self {
             PaneRuntimeIo::Actor(actor) => actor.shutdown(),
+            PaneRuntimeIo::Core(core) => core.shutdown(),
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { .. } => {}
         }
@@ -1543,6 +1560,9 @@ impl PaneRuntimeIo {
     fn duplicate_handoff_fd(&self) -> std::io::Result<std::os::fd::RawFd> {
         match self {
             PaneRuntimeIo::Actor(actor) => actor.duplicate_for_handoff(),
+            PaneRuntimeIo::Core(_) => Err(std::io::Error::other(
+                "core panes are handed off by attaching again, not by fd",
+            )),
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { .. } => {
                 Err(std::io::Error::other("test runtime has no PTY master fd"))
@@ -1554,6 +1574,7 @@ impl PaneRuntimeIo {
     fn foreground_process_group_id(&self) -> Option<u32> {
         match self {
             PaneRuntimeIo::Actor(actor) => actor.foreground_process_group_id(),
+            PaneRuntimeIo::Core(_) => None,
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { .. } => None,
         }
@@ -1563,6 +1584,7 @@ impl PaneRuntimeIo {
     fn begin_handoff(&self, timeout: std::time::Duration) -> std::io::Result<()> {
         match self {
             PaneRuntimeIo::Actor(actor) => actor.begin_handoff(timeout),
+            PaneRuntimeIo::Core(_) => Ok(()),
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { .. } => Ok(()),
         }
@@ -1578,6 +1600,7 @@ impl PaneRuntimeIo {
                     actor.rollback_handoff()
                 }
             }
+            PaneRuntimeIo::Core(_) => Ok(()),
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { .. } => Ok(()),
         }
@@ -1587,6 +1610,7 @@ impl PaneRuntimeIo {
     fn release_after_commit(&self) -> std::io::Result<()> {
         match self {
             PaneRuntimeIo::Actor(actor) => actor.release_after_commit(),
+            PaneRuntimeIo::Core(_) => Ok(()),
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { .. } => Ok(()),
         }
@@ -1610,6 +1634,10 @@ impl PaneRuntimeIo {
                     terminal_responses,
                 );
             }
+            PaneRuntimeIo::Core(core) => {
+                let _ = terminal_responses;
+                core.request_size(rows, cols, cell_width_px, cell_height_px);
+            }
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { resize_tx, .. } => {
                 let _ = resize_tx.send((rows, cols, cell_width_px, cell_height_px));
@@ -1629,6 +1657,7 @@ impl PaneRuntimeIo {
             PaneRuntimeIo::Actor(actor) => {
                 actor.nudge_child_redraw_after_handoff(rows, cols, cell_width_px, cell_height_px);
             }
+            PaneRuntimeIo::Core(_) => {}
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { .. } => {}
         }
@@ -1637,6 +1666,10 @@ impl PaneRuntimeIo {
     fn try_send_bytes(&self, bytes: Bytes) -> Result<(), mpsc::error::TrySendError<Bytes>> {
         match self {
             PaneRuntimeIo::Actor(actor) => actor.try_write_user_input(bytes),
+            PaneRuntimeIo::Core(core) => {
+                core.send_input(bytes);
+                Ok(())
+            }
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { sender, .. } => sender.try_send(bytes),
         }
@@ -1645,6 +1678,11 @@ impl PaneRuntimeIo {
     fn write_terminal_response(&self, response: impl FnOnce() -> Option<Bytes>) {
         match self {
             PaneRuntimeIo::Actor(actor) => actor.write_terminal_response(response),
+            PaneRuntimeIo::Core(core) => {
+                if let Some(bytes) = response() {
+                    core.send_terminal_response(bytes);
+                }
+            }
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { sender, .. } => {
                 if let Some(bytes) = response() {
@@ -1670,6 +1708,10 @@ impl PaneRuntimeIo {
                     let _ = deadline;
                     actor.queue_user_input_submission(text, enter, delay)
                 }
+            }
+            PaneRuntimeIo::Core(core) => {
+                let _ = deadline;
+                core.submit(text, enter, delay)
             }
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { sender, .. } => {
@@ -2332,8 +2374,101 @@ impl PaneRuntime {
         &self,
         appearance: Option<crate::terminal_theme::HostAppearance>,
     ) {
+        if self.is_core() {
+            // Unrequested writes would count as typing in the core terminal;
+            // the core learns the viewer's colors from attach `display`/FACTS.
+            let _ = self.terminal.apply_host_terminal_appearance(appearance);
+            return;
+        }
         self.io
             .write_terminal_response(|| self.terminal.apply_host_terminal_appearance(appearance));
+    }
+
+    pub(crate) fn is_core(&self) -> bool {
+        matches!(self.io, PaneRuntimeIo::Core(_))
+    }
+
+    pub(crate) fn core_io(&self) -> Option<&core_stream::CoreStreamIo> {
+        match &self.io {
+            PaneRuntimeIo::Core(core) => Some(core),
+            _ => None,
+        }
+    }
+
+    /// The folder a local core terminal reports, from the core's record.
+    pub(crate) fn set_core_reported_cwd(&self, cwd: Option<std::path::PathBuf>) {
+        if let Ok(mut reported) = self.reported_cwd.lock() {
+            *reported = cwd;
+        }
+    }
+
+    // A core pane takes the same host context as a PTY pane, but no process.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn attach_core(
+        pane_id: PaneId,
+        rows: u16,
+        cols: u16,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        host_terminal_appearance: Option<crate::terminal_theme::HostAppearance>,
+        handle: crate::core_client::connection::CoreConnectionHandle,
+        spec: core_stream::CoreAttachSpec,
+        events: mpsc::Sender<AppEvent>,
+        render_notify: Arc<Notify>,
+        render_dirty: Arc<RenderSignal>,
+    ) -> std::io::Result<Self> {
+        let rows = rows.max(MIN_PANE_ROWS);
+        let cols = cols.max(MIN_PANE_COLS);
+        let (response_tx, _response_rx) = mpsc::channel::<Bytes>(1);
+        let mut terminal = crate::ghostty::Terminal::new(cols, rows, scrollback_limit_bytes)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        if crate::kitty_graphics::is_enabled() {
+            terminal
+                .enable_kitty_graphics()
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
+        }
+        let pane_terminal = GhosttyPaneTerminal::new(terminal, response_tx.clone())?;
+        pane_terminal.apply_host_terminal_theme(host_terminal_theme);
+        let _ = pane_terminal.apply_host_terminal_appearance(host_terminal_appearance);
+        let terminal = Arc::new(PaneTerminal::new(pane_terminal));
+        let compression = TerminalCompressionTask::spawn(pane_id, terminal.clone());
+        let content_seq = Arc::new(AtomicU64::new(0));
+        let content_write_lock = Arc::new(Mutex::new(()));
+        let context = core_stream::CoreRenderContext {
+            pane_id,
+            terminal: terminal.clone(),
+            response_writer: response_tx,
+            content_write_lock: content_write_lock.clone(),
+            content_seq: content_seq.clone(),
+            compression_wake: compression.notifier(),
+            events,
+            render_notify,
+            render_dirty,
+            runtime: tokio::runtime::Handle::current(),
+        };
+        let io = core_stream::start(context, handle, spec, cols, rows)?;
+        Ok(Self {
+            pane_id,
+            terminal,
+            io: PaneRuntimeIo::Core(io),
+            current_size: Cell::new((rows, cols, 0, 0)),
+            child_pid: Arc::new(AtomicU32::new(0)),
+            reported_cwd: Arc::new(Mutex::new(None)),
+            persistence_cwd: Mutex::new(None),
+            cwd_process_exited: Arc::new(AtomicBool::new(true)),
+            child_wait_completed: None,
+            kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
+            content_seq,
+            content_write_lock,
+            detection_content_seq: Arc::new(AtomicU64::new(0)),
+            full_lifecycle_authority_active: Arc::new(AtomicBool::new(false)),
+            self_reported_agent_active: Arc::new(AtomicBool::new(false)),
+            detect_reset_notify: Arc::new(Notify::new()),
+            pending_release: Arc::new(Mutex::new(None)),
+            preserve_processes_on_drop: true,
+            compression,
+            detect_handle: None,
+        })
     }
 
     // Runtime construction threads PTY geometry, host context, launch policy, and render hooks.
@@ -3329,6 +3464,10 @@ impl PaneRuntime {
     }
 
     pub(crate) fn current_size(&self) -> (u16, u16) {
+        if let PaneRuntimeIo::Core(core) = &self.io {
+            let (cols, rows) = core.shared.grid();
+            return (rows, cols);
+        }
         let (rows, cols, _, _) = self.current_size.get();
         (rows, cols)
     }
@@ -3341,6 +3480,11 @@ impl PaneRuntime {
     pub fn resize(&self, rows: u16, cols: u16, cell_width_px: u32, cell_height_px: u32) {
         let rows = rows.max(MIN_PANE_ROWS);
         let cols = cols.max(MIN_PANE_COLS);
+        if let PaneRuntimeIo::Core(core) = &self.io {
+            // The emulator follows the core's grid; the rectangle is only a wish.
+            core.request_size(rows, cols, cell_width_px, cell_height_px);
+            return;
+        }
         let size = (rows, cols, cell_width_px, cell_height_px);
         if self.current_size.get() == size {
             return;
@@ -3684,6 +3828,7 @@ impl PaneRuntime {
                 let _ = bytes;
                 Ok(())
             }
+            PaneRuntimeIo::Core(_) => Ok(()),
             #[cfg(test)]
             PaneRuntimeIo::TestChannel { .. } => Ok(()),
         }
@@ -3716,6 +3861,17 @@ impl PaneRuntime {
     }
 
     pub fn try_send_focus_event(&self, event: crate::ghostty::FocusEvent) -> bool {
+        if let PaneRuntimeIo::Core(core) = &self.io {
+            // The core's FOCUS frame decides who owns the size, whether or
+            // not the program asked for focus reports (mode 1004).
+            core.focus_changed(matches!(event, crate::ghostty::FocusEvent::Gained));
+            if self.focus_reporting_enabled() {
+                if let Ok(bytes) = crate::ghostty::encode_focus(event) {
+                    core.send_terminal_response(Bytes::from(bytes));
+                }
+            }
+            return true;
+        }
         if !self.focus_reporting_enabled() {
             return false;
         }
@@ -3779,7 +3935,14 @@ impl PaneRuntime {
     }
 
     pub(crate) fn pixel_size(&self) -> Option<(u32, u32)> {
-        let (rows, cols, cell_width_px, cell_height_px) = self.current_size.get();
+        let (rows, cols, cell_width_px, cell_height_px) = match &self.io {
+            PaneRuntimeIo::Core(core) => {
+                let (cols, rows) = core.shared.grid();
+                let (width, height) = core.shared.cell_px();
+                (rows, cols, width, height)
+            }
+            _ => self.current_size.get(),
+        };
         let width = u32::from(cols).checked_mul(cell_width_px)?;
         let height = u32::from(rows).checked_mul(cell_height_px)?;
         (width > 0 && height > 0).then_some((width, height))
@@ -3805,6 +3968,9 @@ impl PaneRuntime {
 
     /// Get the current working directory of the child shell process.
     pub fn cwd(&self) -> Option<std::path::PathBuf> {
+        if self.is_core() {
+            return self.reported_cwd.lock().ok().and_then(|cwd| cwd.clone());
+        }
         if let Some(cwd) = self
             .reported_cwd
             .lock()
@@ -3819,6 +3985,9 @@ impl PaneRuntime {
     }
 
     pub fn cwd_for_persistence(&self) -> Option<std::path::PathBuf> {
+        if self.is_core() {
+            return self.cwd();
+        }
         let pid = self.child_pid.load(Ordering::Acquire);
         let exited = self.cwd_process_exited.load(Ordering::Acquire);
         if let Some(cwd) = (!exited)
@@ -3845,6 +4014,9 @@ impl PaneRuntime {
     }
 
     pub fn follow_cwd(&self) -> Option<std::path::PathBuf> {
+        if self.is_core() {
+            return self.cwd();
+        }
         #[cfg(unix)]
         {
             let leader_cwd = self
@@ -3862,6 +4034,9 @@ impl PaneRuntime {
 
     /// Get the current working directory of the process group controlling the pane PTY.
     pub fn foreground_cwd(&self) -> Option<std::path::PathBuf> {
+        if self.is_core() {
+            return self.cwd();
+        }
         #[cfg(unix)]
         {
             let pid = self.child_pid.load(Ordering::Acquire);

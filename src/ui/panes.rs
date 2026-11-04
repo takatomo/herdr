@@ -509,7 +509,7 @@ pub(super) fn render_panes(
             .get(target.tab_index)
             .and_then(|tab| tab.terminal_id(info.id))
             .and_then(|id| app.terminals.get(id))
-            .and_then(|terminal| terminal.restore_error.as_deref())
+            .and_then(|terminal| terminal.placeholder_text())
         {
             frame.render_widget(
                 Paragraph::new(reason).wrap(Wrap { trim: false }),

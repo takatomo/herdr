@@ -111,6 +111,17 @@ pub struct PaneSnapshot {
     pub agent_resume: Option<PaneAgentResumeSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub launch_argv: Option<Vec<String>>,
+    /// A pane that shows a herdr-core terminal: which one, never a command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub core: Option<CorePaneSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CorePaneSnapshot {
+    pub origin_core_id: String,
+    pub origin_address: String,
+    pub path: String,
+    pub mode: crate::core_client::model::CoreMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -388,6 +399,14 @@ fn capture_tab(
                 agent_session,
                 agent_resume,
                 launch_argv,
+                core: terminal
+                    .and_then(|terminal| terminal.core.as_ref())
+                    .map(|core| CorePaneSnapshot {
+                        origin_core_id: core.key.origin_core_id.clone(),
+                        origin_address: core.key.origin_address.clone(),
+                        path: core.path.clone(),
+                        mode: core.mode,
+                    }),
             },
         );
     }
@@ -707,6 +726,7 @@ mod tests {
                 agent_session: None,
                 agent_resume: None,
                 launch_argv: None,
+                core: None,
             },
         );
         panes.insert(
@@ -719,6 +739,7 @@ mod tests {
                 agent_session: None,
                 agent_resume: None,
                 launch_argv: None,
+                core: None,
             },
         );
 
@@ -1405,6 +1426,7 @@ mod tests {
                 agent_session: None,
                 agent_resume: None,
                 launch_argv: None,
+                core: None,
             },
         );
         panes.insert(
@@ -1419,6 +1441,7 @@ mod tests {
                 agent_session: None,
                 agent_resume: None,
                 launch_argv: None,
+                core: None,
             },
         );
 
@@ -1462,5 +1485,28 @@ mod tests {
             restored.workspaces[0].tabs[0].panes[&0].cwd,
             PathBuf::from("/tmp/this-directory-does-not-exist-for-herdr-test")
         );
+    }
+}
+
+#[cfg(test)]
+mod core_pane_snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn core_panes_save_which_terminal_and_old_snapshots_still_load() {
+        let json = r#"{"cwd":"/tmp","core":{"origin_core_id":"c","origin_address":"t7","path":"rb/t7","mode":"observe"}}"#;
+        let pane: PaneSnapshot = serde_json::from_str(json).unwrap();
+        let core = pane.core.as_ref().unwrap();
+        assert_eq!(
+            (core.origin_address.as_str(), core.mode),
+            ("t7", crate::core_client::model::CoreMode::Observe)
+        );
+        assert!(pane.launch_argv.is_none());
+        let again: PaneSnapshot =
+            serde_json::from_str(&serde_json::to_string(&pane).unwrap()).unwrap();
+        assert_eq!(again.core, pane.core);
+        let old: PaneSnapshot = serde_json::from_str(r#"{"cwd":"/tmp"}"#).unwrap();
+        assert!(old.core.is_none());
+        assert!(!serde_json::to_string(&old).unwrap().contains("core"));
     }
 }

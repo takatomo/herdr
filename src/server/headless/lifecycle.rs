@@ -60,7 +60,13 @@ impl HeadlessServer {
 
         let mut paused_terminal_ids = Vec::new();
         for terminal_id in pane_by_terminal.keys() {
-            if let Some(runtime) = self.app.terminal_runtimes.get(terminal_id) {
+            // Core panes carry no fd: the new server attaches them again.
+            if let Some(runtime) = self
+                .app
+                .terminal_runtimes
+                .get(terminal_id)
+                .filter(|runtime| !runtime.is_core())
+            {
                 if let Err(err) = runtime.pause_handoff_reader(Duration::from_secs(2)) {
                     self.rollback_handoff_before_commit(&socket_path, &paused_terminal_ids);
                     return Err(err);
@@ -82,6 +88,9 @@ impl HeadlessServer {
             let Some(pane_id) = pane_by_terminal.get(terminal_id).copied() else {
                 continue;
             };
+            if runtime.is_core() {
+                continue;
+            }
             let mut handoff_runtime = runtime.handoff_runtime_state(pane_id);
             handoff_runtime.agent_state = self
                 .app

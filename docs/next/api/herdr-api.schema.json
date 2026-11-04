@@ -1759,6 +1759,300 @@
           ],
           "type": "object"
         },
+        "CoreAttentionAction": {
+          "oneOf": [
+            {
+              "const": "count",
+              "description": "How many core terminals need a person.",
+              "type": "string"
+            },
+            {
+              "const": "next",
+              "description": "Go to the one waiting longest.",
+              "type": "string"
+            }
+          ]
+        },
+        "CoreAttentionParams": {
+          "properties": {
+            "action": {
+              "$ref": "#/schemas/request/$defs/CoreAttentionAction"
+            },
+            "close_popup": {
+              "default": false,
+              "type": "boolean"
+            },
+            "placement": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/request/$defs/CorePlacementParam"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        "CorePlacementParam": {
+          "oneOf": [
+            {
+              "enum": [
+                "tab",
+                "split"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "existing",
+              "description": "Focus the pane already showing it, else a new tab.",
+              "type": "string"
+            }
+          ]
+        },
+        "CoreRunOpen": {
+          "properties": {
+            "close_popup": {
+              "default": false,
+              "type": "boolean"
+            },
+            "focus": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "mode": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/request/$defs/CoreViewMode"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "placement": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/request/$defs/CorePlacementParam"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "CoreStatusParams": {
+          "type": "object"
+        },
+        "CoreTerminalListParams": {
+          "properties": {
+            "cwd": {
+              "description": "Folder prefix.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "labels": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "machine": {
+              "description": "`local` or a core machine name.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "placed": {
+              "description": "Only terminals with (true) or without (false) a pane.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "state": {
+              "description": "A core word (`working`, `blocked`, ...), `attention`, `finished` or `no_status`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "text": {
+              "description": "Case-insensitive text in the path, name, title, template or message.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "CoreTerminalOpenParams": {
+          "properties": {
+            "close_popup": {
+              "default": false,
+              "description": "Close the popup this request came from, after the pane is placed.",
+              "type": "boolean"
+            },
+            "direction": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/request/$defs/SplitDirection"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "endpoint_core_id": {
+              "description": "The core id the caller read the terminal from; refused when Herdr is\nconnected to another core.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "focus": {
+              "description": "Default: true.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "mode": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/request/$defs/CoreViewMode"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "placement": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/request/$defs/CorePlacementParam"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "target_pane_id": {
+              "description": "Pane to split (default: the focused pane).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "terminal": {
+              "description": "Path (`t7`, `rohan/t7`) or name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "terminal"
+          ],
+          "type": "object"
+        },
+        "CoreTerminalRunParams": {
+          "properties": {
+            "argv": {
+              "description": "Program and arguments, or a template name and its task.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cwd": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "endpoint_core_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "keep": {
+              "default": false,
+              "type": "boolean"
+            },
+            "labels": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "line": {
+              "description": "A shell line instead of argv.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Unique among live terminals; the core refuses a second live one.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "no_notify": {
+              "default": false,
+              "type": "boolean"
+            },
+            "on": {
+              "description": "A core machine to run it on.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "open": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/request/$defs/CoreRunOpen"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Open it in a pane after it starts (omit to only start it)."
+            },
+            "outlive_parent": {
+              "default": false,
+              "type": "boolean"
+            },
+            "parent": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "CoreViewMode": {
+          "enum": [
+            "control",
+            "observe"
+          ],
+          "type": "string"
+        },
         "EmptyParams": {
           "type": "object"
         },
@@ -6312,6 +6606,86 @@
             "params"
           ],
           "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "core.status",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/CoreStatusParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "core.terminal.list",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/CoreTerminalListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "core.terminal.open",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/CoreTerminalOpenParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "core.terminal.run",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/CoreTerminalRunParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "core.attention",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/CoreAttentionParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
         }
       ],
       "properties": {
@@ -6791,6 +7165,424 @@
             "failed"
           ],
           "type": "string"
+        },
+        "CoreIdentityInfo": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "type": "object"
+        },
+        "CoreMachineInfo": {
+          "properties": {
+            "host": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "description": "The core's name for it (`rohan` in `rohan/t7`); not a Herdr machine.",
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "id",
+            "host",
+            "state",
+            "version"
+          ],
+          "type": "object"
+        },
+        "CoreOpenedInfo": {
+          "properties": {
+            "created": {
+              "description": "False when an existing pane was focused instead.",
+              "type": "boolean"
+            },
+            "pane": {
+              "$ref": "#/schemas/success_response/$defs/PaneInfo"
+            }
+          },
+          "required": [
+            "pane",
+            "created"
+          ],
+          "type": "object"
+        },
+        "CorePaneRef": {
+          "properties": {
+            "mode": {
+              "$ref": "#/schemas/success_response/$defs/CoreViewMode"
+            },
+            "pane_id": {
+              "type": "string"
+            },
+            "phase": {
+              "description": "pending, attached, closing, lost, interrupted, mismatch, not_found or ended.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pane_id",
+            "mode",
+            "phase"
+          ],
+          "type": "object"
+        },
+        "CoreRunFirstMessage": {
+          "description": "Whether a template run's first message went in, as the core answered.",
+          "properties": {
+            "reason": {
+              "description": "Why it was not sent (a trust or sign-in screen, not ready in time, ...).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sent": {
+              "type": "boolean"
+            },
+            "started": {
+              "description": "Whether the agent started working on it.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "turn": {
+              "description": "The terminal's turn when it went in.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "sent"
+          ],
+          "type": "object"
+        },
+        "CoreRunTerminal": {
+          "properties": {
+            "endpoint_core_id": {
+              "type": "string"
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "endpoint_core_id"
+          ],
+          "type": "object"
+        },
+        "CoreStatusInfo": {
+          "properties": {
+            "attention": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "by_state": {
+              "additionalProperties": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "description": "Live terminals by the core's status word (`no_status` when unreported).",
+              "type": "object"
+            },
+            "core": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/success_response/$defs/CoreIdentityInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "endpoint": {
+              "description": "The socket Herdr connects to.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "features": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "finished": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "generation": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "herdr_version": {
+              "type": "string"
+            },
+            "live": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "machines": {
+              "default": [],
+              "items": {
+                "$ref": "#/schemas/success_response/$defs/CoreMachineInfo"
+              },
+              "type": "array"
+            },
+            "oldest_attention_ms": {
+              "description": "When the longest-waiting terminal needing a person reported, ms since the epoch.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "panes": {
+              "description": "Core panes in this Herdr server.",
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "state": {
+              "description": "disabled, unsupported, connecting, connected or disconnected.",
+              "type": "string"
+            },
+            "version": {
+              "description": "The running core's version (from hello).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "enabled",
+            "state",
+            "live",
+            "finished",
+            "by_state",
+            "attention",
+            "panes",
+            "herdr_version"
+          ],
+          "type": "object"
+        },
+        "CoreTerminalInfo": {
+          "properties": {
+            "app": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "attention": {
+              "type": "boolean"
+            },
+            "created_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "cwd": {
+              "type": "string"
+            },
+            "exit_code": {
+              "format": "int32",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "finished_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "kind": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "label": {
+              "description": "How Herdr shows it (`working`, `blocked: permission`, `error`, `turn done`, `exited 0`, ...).",
+              "type": "string"
+            },
+            "labels": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "type": "object"
+            },
+            "machine": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "origin_address": {
+              "type": "string"
+            },
+            "origin_core_id": {
+              "type": "string"
+            },
+            "panes": {
+              "default": [],
+              "items": {
+                "$ref": "#/schemas/success_response/$defs/CorePaneRef"
+              },
+              "type": "array"
+            },
+            "parent": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "type": "string"
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "description": "live or finished.",
+              "type": "string"
+            },
+            "status": {
+              "description": "The program's own word (OSC 7501), if it reported one.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "template": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "title": {
+              "type": "string"
+            },
+            "turn": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "path",
+            "origin_core_id",
+            "origin_address",
+            "state",
+            "label",
+            "attention",
+            "cwd",
+            "turn",
+            "title",
+            "created_ms"
+          ],
+          "type": "object"
+        },
+        "CoreViewMode": {
+          "enum": [
+            "control",
+            "observe"
+          ],
+          "type": "string"
+        },
+        "ErrorBody": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
         },
         "EventData": {
           "oneOf": [
@@ -10413,6 +11205,138 @@
               },
               "required": [
                 "type"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "status": {
+                  "$ref": "#/schemas/success_response/$defs/CoreStatusInfo"
+                },
+                "type": {
+                  "const": "core_status",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "status"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "terminals": {
+                  "items": {
+                    "$ref": "#/schemas/success_response/$defs/CoreTerminalInfo"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "const": "core_terminal_list",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "terminals"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "opened": {
+                  "$ref": "#/schemas/success_response/$defs/CoreOpenedInfo"
+                },
+                "type": {
+                  "const": "core_terminal_opened",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "opened"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "first_message": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/schemas/success_response/$defs/CoreRunFirstMessage"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "A template run's first message. `sent: false` means the terminal\nruns but was not asked yet; send it there, do not run it again."
+                },
+                "open_error": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/schemas/success_response/$defs/ErrorBody"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The terminal started but could not be shown; run nothing again,\nopen it instead."
+                },
+                "opened": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/schemas/success_response/$defs/CoreOpenedInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "terminal": {
+                  "$ref": "#/schemas/success_response/$defs/CoreRunTerminal"
+                },
+                "type": {
+                  "const": "core_terminal_run",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "terminal"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "count": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "line": {
+                  "description": "One line for a status bar: empty when none, `hc ?` when not connected.",
+                  "type": "string"
+                },
+                "opened": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/schemas/success_response/$defs/CoreOpenedInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": {
+                  "const": "core_attention",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "count",
+                "line"
               ],
               "type": "object"
             }

@@ -22,6 +22,7 @@ macro_rules! println {
 pub(crate) mod agent;
 mod api;
 mod completion;
+mod core;
 mod integration;
 mod machine;
 pub(crate) mod notification;
@@ -120,6 +121,7 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         }
         "api" => api::run_api_command(&args[2..])?,
         "status" => status::run_status_command(&args[2..])?,
+        "core" => core::run_core_command(&args[2..])?,
         "completion" | "completions" => completion::run_completion_command(&args[2..])?,
         "config" => run_config_command(&args[2..])?,
         "channel" => run_channel_command(&args[2..])?,

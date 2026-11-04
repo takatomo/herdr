@@ -791,6 +791,8 @@ pub struct AppState {
         std::collections::HashMap<crate::terminal::TerminalId, crate::terminal::TerminalState>,
     /// Terminal ids whose size is currently owned by a direct attach client.
     pub direct_attach_resize_locks: std::collections::HashSet<crate::terminal::TerminalId>,
+    /// What the connected herdr-core reports (empty when disabled).
+    pub core: crate::core_client::model::CoreView,
     pub(crate) pane_id_aliases: std::collections::HashMap<u32, PaneId>,
     pub(crate) public_pane_id_aliases: std::collections::HashMap<String, PaneId>,
     pub workspaces: Vec<Workspace>,
@@ -891,6 +893,11 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Core terminals changed; presentation that lists them refreshes.
+    pub(crate) fn mark_core_changed(&mut self) {
+        self.mark_session_dirty();
+    }
+
     pub(crate) fn mark_session_dirty(&mut self) {
         self.session_dirty = true;
     }
@@ -1037,6 +1044,7 @@ impl AppState {
         Self {
             terminals: std::collections::HashMap::new(),
             direct_attach_resize_locks: std::collections::HashSet::new(),
+            core: Default::default(),
             pane_id_aliases: std::collections::HashMap::new(),
             public_pane_id_aliases: std::collections::HashMap::new(),
             workspaces: Vec::new(),
@@ -1151,7 +1159,33 @@ impl AppState {
         state
     }
 
+    /// Core panes: one control pane per core terminal, and never a command
+    /// to start or resume (their program belongs to the core).
+    pub fn core_invariant_violations(&self) -> Vec<String> {
+        let mut violations = Vec::new();
+        let mut controls = std::collections::HashSet::new();
+        for terminal in self.terminals.values() {
+            let Some(core) = terminal.core.as_ref() else {
+                continue;
+            };
+            if core.mode == crate::core_client::model::CoreMode::Control
+                && !controls.insert(core.key.clone())
+            {
+                violations.push(format!("two control panes for {:?}", core.key));
+            }
+            if terminal.launch_argv.is_some()
+                || terminal.respawn_shell_on_exit
+                || terminal.pending_agent_resume_plan.is_some()
+            {
+                violations.push(format!("core pane {} has a command to run", core.path));
+            }
+        }
+        violations
+    }
+
     pub fn assert_invariants_for_test(&self) {
+        let core_violations = self.core_invariant_violations();
+        assert!(core_violations.is_empty(), "{core_violations:?}");
         if self.workspaces.is_empty() {
             assert!(
                 self.active.is_none(),

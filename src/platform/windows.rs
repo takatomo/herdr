@@ -5681,3 +5681,58 @@ mod tests {
         }
     }
 }
+
+/// herdr-core listens on a named pipe on Windows; Herdr does not connect to it yet.
+#[derive(Debug)]
+pub(crate) struct CoreSocket;
+
+impl CoreSocket {
+    pub(crate) fn try_clone(&self) -> std::io::Result<Self> {
+        Err(core_socket_unsupported())
+    }
+
+    pub(crate) fn shutdown(&self, _how: std::net::Shutdown) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    pub(crate) fn set_write_timeout(
+        &self,
+        _timeout: Option<std::time::Duration>,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    pub(crate) fn set_read_timeout(
+        &self,
+        _timeout: Option<std::time::Duration>,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl std::io::Read for CoreSocket {
+    fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+        Err(core_socket_unsupported())
+    }
+}
+
+impl std::io::Write for CoreSocket {
+    fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+        Err(core_socket_unsupported())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn core_socket_unsupported() -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "herdr-core connections are not supported on Windows yet",
+    )
+}
+
+pub(crate) fn connect_core_socket(_path: &std::path::Path) -> std::io::Result<CoreSocket> {
+    Err(core_socket_unsupported())
+}

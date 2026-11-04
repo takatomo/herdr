@@ -173,3 +173,48 @@ herdr agent attach reviewer --takeover
 ```
 
 Use `herdr terminal attach <terminal_id>` when you want the same direct attach behavior for a non-agent terminal.
+
+## herdr-core terminals
+
+Herdr can show the terminals of a running [herdr-core](https://herdr.dev/core/) (`hc`) as ordinary panes. The core owns each terminal, its program, its life and its status; Herdr shows it, places it and types into it.
+
+### Enable
+
+```toml
+[core]
+enabled = true
+# session = "default"          # the hc session whose socket Herdr uses
+# socket = "/path/to/hc.sock"  # set this when the core's own config moves its socket
+```
+
+Herdr connects to a core that is already running. It never starts a core and never runs `hc`, so listing or showing terminals cannot start one; when no core is listening, `herdr core status` says `disconnected` and Herdr retries. Herdr does not read its own `HC_*` environment, so a Herdr started inside an hc terminal does not follow that terminal's socket.
+
+### Open, run and attention
+
+```bash
+herdr core list                         # every terminal, with or without a pane
+herdr core open t7                      # a new tab; a second open focuses the same pane
+herdr core open rohan/t7 --split        # a terminal on a machine the core added
+herdr core open t7 --observe            # watch only: no typing, no resizing
+herdr core run --name review-1 -- reviewer "review src/x.rs"
+herdr core attention                    # `hc !2` when two terminals need you
+herdr core attention next               # go to the one waiting longest
+```
+
+`core.terminal.run` sends one start request and never retries it. When the answer is lost it reports `run_result_unknown`; look for the name in `herdr core list` instead of running it again. For a template run the answer also says whether the first message went in; `first message NOT sent (<reason>)` means the terminal runs but was not asked yet, so check it and send it there. Terminals started from Herdr get only Herdr's terminal identity (`TERM`, `COLORTERM`, `TERM_PROGRAM`) on top of the core's environment, never `HERDR_*`.
+
+### What Herdr shows
+
+A core pane reports the program's own status (OSC 7501) as its agent state, so the sidebar, notifications and `agent wait` work as for other agents: `working`, `blocked` (with `permission`, `question` or `auth`), `error` (counted as needing attention), `idle` and `turn done`. A terminal that never reported shows `no status`; a finished program shows `exited <code>`. Terminals without a pane notify when they become blocked or report an error (`[core.notify]`); the notice is shown like `notification show`, following each client's `ui.toast` settings.
+
+### Closing, ending and restarts
+
+Closing a core pane only detaches; the terminal keeps running in the core. Herdr has no command that ends a core terminal. When the program ends, the pane keeps its last screen. After a Herdr restart or a dropped line, Herdr attaches the same terminal again; it is identified by the core's id and its address there, so a different core on the same socket is never mistaken for it. Changing the `[core]` settings that pick the core (`enabled`, `session`, `socket`, `reconnect_max_seconds`) reconnects, and core panes attach again on the new connection; other `[core]` settings apply without reconnecting. A kept terminal (`hc run --keep`) that loses its program shows `lost: waiting for shell` until the core starts the new shell.
+
+### Views and size
+
+Each pane draws from a watch-only stream. A control pane also types, and takes the terminal's size when it is shown, focused or resized; a hidden pane never takes it. When another viewer owns the size, the pane shows the terminal at that size. Only one control pane per terminal exists in a Herdr server; `--observe` panes can be many. Typing through the API (`pane send-text`, `pane send-keys`, `pane run`) into a core pane that cannot type now fails instead of dropping the input: `pane_observe_only`, `pane_not_ready` (not attached yet or the core is disconnected) or `pane_ended`.
+
+### Limits
+
+Herdr connects to herdr-core over its Unix socket; Windows is not supported yet. Herdr's machines (`herdr machine`) and the core's machines (`rohan/t7`) are separate.

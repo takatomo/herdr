@@ -118,6 +118,66 @@ impl Tab {
         )
     }
 
+    /// A tab whose only pane has no runtime yet (a core pane waiting to attach).
+    pub fn new_pending(
+        number: usize,
+        cwd: PathBuf,
+        events: mpsc::Sender<AppEvent>,
+        render_notify: Arc<Notify>,
+        render_dirty: Arc<RenderSignal>,
+    ) -> (Self, PaneId, TerminalState) {
+        let (layout, root_id) = TileLayout::new();
+        let terminal_id = TerminalId::alloc();
+        let terminal = TerminalState::new(terminal_id.clone(), cwd);
+        let mut panes = HashMap::new();
+        panes.insert(root_id, PaneState::new(terminal_id));
+        (
+            Self {
+                custom_name: None,
+                number,
+                root_pane: root_id,
+                layout,
+                panes,
+                #[cfg(test)]
+                runtimes: HashMap::new(),
+                zoomed: false,
+                events,
+                render_notify,
+                render_dirty,
+            },
+            root_id,
+            terminal,
+        )
+    }
+
+    /// Splits `target` with a pane that has no runtime yet.
+    pub fn split_pane_pending(
+        &mut self,
+        target: PaneId,
+        focus_new_pane: bool,
+        direction: Direction,
+        ratio: Option<f32>,
+        cwd: PathBuf,
+    ) -> std::io::Result<(PaneId, TerminalState)> {
+        let Some(new_id) = self
+            .layout
+            .split_pane(target, direction, ratio.unwrap_or(0.5))
+        else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "split target pane is not in the layout",
+            ));
+        };
+        let terminal_id = TerminalId::alloc();
+        let terminal = TerminalState::new(terminal_id.clone(), cwd);
+        if focus_new_pane {
+            self.layout.focus_pane(new_id);
+        }
+        self.panes.insert(new_id, PaneState::new(terminal_id));
+        self.zoomed = false;
+        Ok((new_id, terminal))
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn new_with_runtime(
         number: usize,

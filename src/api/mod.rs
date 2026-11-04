@@ -1,4 +1,5 @@
 pub mod client;
+pub(crate) mod core_run;
 mod event_hub;
 pub mod schema;
 mod server;

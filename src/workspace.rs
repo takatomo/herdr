@@ -572,6 +572,45 @@ impl Workspace {
         Ok((self.tabs.len() - 1, terminal, runtime))
     }
 
+    /// A new tab whose pane has no runtime yet (a core pane waiting to attach).
+    pub fn create_tab_pending(&mut self, cwd: PathBuf) -> (usize, PaneId, TerminalState) {
+        let number = self.next_public_tab_number;
+        self.next_public_tab_number += 1;
+        let pane_number = self.next_public_pane_number;
+        let tab = self
+            .active_tab()
+            .expect("workspace must always have at least one tab");
+        let (events, render_notify, render_dirty) = (
+            tab.events.clone(),
+            tab.render_notify.clone(),
+            tab.render_dirty.clone(),
+        );
+        let (tab, pane_id, terminal) =
+            Tab::new_pending(number, cwd, events, render_notify, render_dirty);
+        self.register_new_pane_with_number(pane_id, pane_number);
+        self.tabs.push(tab);
+        (self.tabs.len() - 1, pane_id, terminal)
+    }
+
+    /// Splits `pane_id` with a pane that has no runtime yet.
+    pub fn split_pane_pending(
+        &mut self,
+        pane_id: PaneId,
+        direction: Direction,
+        ratio: Option<f32>,
+        cwd: PathBuf,
+        focus_new_pane: bool,
+    ) -> Option<std::io::Result<(usize, PaneId, TerminalState)>> {
+        let tab_idx = self.find_tab_index_for_pane(pane_id)?;
+        let pane_number = self.next_public_pane_number;
+        let result =
+            self.tabs[tab_idx].split_pane_pending(pane_id, focus_new_pane, direction, ratio, cwd);
+        Some(result.map(|(new_id, terminal)| {
+            self.register_new_pane_with_number(new_id, pane_number);
+            (tab_idx, new_id, terminal)
+        }))
+    }
+
     pub fn close_tab(&mut self, idx: usize) -> bool {
         if self.tabs.len() <= 1 || idx >= self.tabs.len() {
             return false;

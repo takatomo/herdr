@@ -76,6 +76,29 @@ pub(crate) struct WorktreeReadData {
 /// An event from a background task to the main loop.
 #[derive(Debug)]
 pub enum AppEvent {
+    /// News from herdr-core connection `connection` (see `crate::core_client`).
+    Core {
+        connection: u64,
+        event: Box<crate::core_client::connection::ConnectionEvent>,
+    },
+    /// A core pane's streams attached (the terminal record), or failed to.
+    CorePaneAttached {
+        connection: u64,
+        pane_id: PaneId,
+        result: Box<
+            Result<crate::core_client::protocol::Terminal, crate::core_client::protocol::RpcError>,
+        >,
+    },
+    /// A core pane's render stream ended: closed by the core (exit, loss) or
+    /// interrupted by a dropped line. The terminal record says which.
+    CorePaneStreamEnded {
+        connection: u64,
+        pane_id: PaneId,
+        reason: Option<crate::core_client::protocol::CloseReason>,
+        interrupted: bool,
+    },
+    /// Tell the person about a core terminal that has no pane.
+    CoreNotify { title: String, body: String },
     /// A pane's child process exited.
     PaneDied {
         pane_id: PaneId,

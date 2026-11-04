@@ -1469,6 +1469,70 @@
       ]
     },
     {
+      "id": "core",
+      "title": "Core",
+      "keys": [
+        {
+          "key": "core.enabled",
+          "type": "boolean",
+          "default": "false",
+          "description": "Connect to a running herdr-core (`hc`) and show its terminals as panes. Herdr never starts a core and never runs `hc`."
+        },
+        {
+          "key": "core.session",
+          "type": "string",
+          "default": "\"default\"",
+          "description": "The hc session whose socket Herdr connects to. Herdr's own `HC_*` environment is not read."
+        },
+        {
+          "key": "core.socket",
+          "type": "string",
+          "default": "unset",
+          "description": "Core socket path. Overrides `core.session`; set it when the core's own config moves its socket."
+        },
+        {
+          "key": "core.reconnect_max_seconds",
+          "type": "integer",
+          "default": "30",
+          "description": "Longest wait between attempts to reconnect to the core."
+        },
+        {
+          "key": "core.notify.blocked",
+          "type": "boolean",
+          "default": "true",
+          "description": "Notify when a core terminal without a pane becomes blocked."
+        },
+        {
+          "key": "core.notify.error",
+          "type": "boolean",
+          "default": "true",
+          "description": "Notify when a core terminal without a pane reports an error."
+        },
+        {
+          "key": "core.notify.finished",
+          "type": "boolean",
+          "default": "false",
+          "description": "Notify when the program of a core terminal without a pane finishes."
+        },
+        {
+          "key": "core.open_placement",
+          "type": "enum",
+          "default": "\"tab\"",
+          "description": "Where `herdr core open` places a terminal when no placement is given.",
+          "values": [
+            "tab",
+            "split"
+          ]
+        },
+        {
+          "key": "core.history_lines",
+          "type": "integer",
+          "default": "200",
+          "description": "Scrollback lines a newly attached core pane shows."
+        }
+      ]
+    },
+    {
       "id": "advanced",
       "title": "Advanced",
       "keys": [

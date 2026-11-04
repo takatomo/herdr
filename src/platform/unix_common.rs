@@ -952,3 +952,10 @@ mod shared_ssh_tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
+
+/// A connection to a herdr-core socket.
+pub(crate) type CoreSocket = std::os::unix::net::UnixStream;
+
+pub(crate) fn connect_core_socket(path: &std::path::Path) -> std::io::Result<CoreSocket> {
+    std::os::unix::net::UnixStream::connect(path)
+}

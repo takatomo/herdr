@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 mod agent_view;
 mod agents;
+mod core_terminals;
 mod env;
 mod integrations;
 mod layouts;
@@ -90,6 +91,9 @@ impl App {
         &mut self,
         ev: AppEvent,
     ) -> Vec<crate::app::actions::PaneStateUpdate> {
+        if Self::is_core_event(&ev) {
+            return self.handle_core_event(ev);
+        }
         let mut worktree_restore_failed = false;
         let ev = match ev {
             AppEvent::WorktreeRuntimeRestoreFailed {
@@ -1258,6 +1262,24 @@ impl App {
             }
             Method::PluginPaneClose(params) => {
                 return self.handle_plugin_pane_close(request.id, params);
+            }
+            Method::CoreStatus(_) => return self.handle_core_status(request.id),
+            Method::CoreTerminalList(params) => {
+                return self.handle_core_terminal_list(request.id, params);
+            }
+            Method::CoreTerminalOpen(params) => {
+                return self.handle_core_terminal_open(request.id, params);
+            }
+            Method::CoreAttention(params) => {
+                return self.handle_core_attention(request.id, params);
+            }
+            Method::CoreTerminalRun(_) => {
+                // Runs on the API connection's thread; never in the app loop.
+                return responses::encode_error(
+                    request.id,
+                    "invalid_request",
+                    "core.terminal.run is handled by the API connection",
+                );
             }
             _ => {
                 return responses::encode_error(

@@ -1396,6 +1396,11 @@ impl AppState {
                 Vec::new()
             }
             AppEvent::WorktreeRuntimeRestoreFailed { .. } => Vec::new(),
+            // The app handles core events before plain state sees them.
+            AppEvent::Core { .. }
+            | AppEvent::CorePaneAttached { .. }
+            | AppEvent::CorePaneStreamEnded { .. }
+            | AppEvent::CoreNotify { .. } => Vec::new(),
             AppEvent::UpdateReady {
                 version,
                 install_command,

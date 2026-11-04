@@ -331,6 +331,26 @@ impl HeadlessServer {
                 }
                 false
             }
+            AppEvent::CoreNotify { title, body } => {
+                // A core terminal without a pane: told like `notification show`,
+                // and each client shell shows it by its own toast settings.
+                if let Some(title) = sanitize_notification_text(title, 80) {
+                    self.send_to_client_shells(ServerMessage::SemanticNotification(
+                        protocol::SemanticNotification {
+                            kind: protocol::SemanticNotificationKind::Custom,
+                            title,
+                            body: sanitize_notification_text(body, 240),
+                            sound: None,
+                            agent: None,
+                            workspace_id: None,
+                            tab_id: None,
+                            pane_id: None,
+                            position: None,
+                        },
+                    ));
+                }
+                false
+            }
             AppEvent::ClipboardWrite { content } => {
                 // Clipboard writes are client-local side effects. Forward them only to
                 // the foreground client instead of broadcasting to every attached client.

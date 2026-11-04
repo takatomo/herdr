@@ -173,3 +173,48 @@ herdr agent attach reviewer --takeover
 ```
 
 想对非智能体终端获得相同的直接附加行为时,用 `herdr terminal attach <terminal_id>`。
+
+## herdr-core 终端
+
+Herdr 可以把正在运行的 [herdr-core](https://herdr.dev/core/) (`hc`) 的终端显示为普通窗格。终端、程序、生命周期和状态由 core 负责；Herdr 负责显示、布局和输入。
+
+### 启用
+
+```toml
+[core]
+enabled = true
+# session = "default"          # Herdr 使用的 hc 会话
+# socket = "/path/to/hc.sock"  # core 的配置改变了 socket 位置时设置
+```
+
+Herdr 只连接已经运行的 core。它从不启动 core，也从不运行 `hc`，因此列出或显示终端不会启动 core；没有 core 时 `herdr core status` 显示 `disconnected`，Herdr 会重试连接。Herdr 不读取自身的 `HC_*` 环境变量，所以在 hc 终端里启动的 Herdr 不会跟随该终端的 socket。
+
+### 打开、启动与需要处理
+
+```bash
+herdr core list                         # 所有终端，无论是否有窗格
+herdr core open t7                      # 新标签页；再次打开会聚焦同一窗格
+herdr core open rohan/t7 --split        # core 添加的机器上的终端
+herdr core open t7 --observe            # 只观看：不输入，不改变大小
+herdr core run --name review-1 -- reviewer "review src/x.rs"
+herdr core attention                    # 两个终端需要处理时显示 `hc !2`
+herdr core attention next               # 跳到等待最久的终端
+```
+
+`core.terminal.run` 只发送一次启动请求，从不重试。回答丢失时返回 `run_result_unknown`；请在 `herdr core list` 中按名称查找，而不是再次启动。对于 template 启动，回答还会说明首条消息是否已发送；`first message NOT sent (<原因>)` 表示终端在运行但尚未收到请求，请检查该终端并在那里发送。从 Herdr 启动的终端只在 core 的环境之上获得 Herdr 的终端标识 (`TERM`、`COLORTERM`、`TERM_PROGRAM`)，不会获得 `HERDR_*`。
+
+### Herdr 的显示
+
+core 窗格把程序自己报告的状态 (OSC 7501) 作为智能体状态，因此侧边栏、通知和 `agent wait` 与其他智能体一样工作：`working`、`blocked` (`permission`、`question` 或 `auth`)、`error` (计为需要处理)、`idle` 和 `turn done`。从未报告的终端显示 `no status`；程序结束后显示 `exited <code>`。没有窗格的终端在变为 blocked 或报告 error 时发出通知 (`[core.notify]`)；通知与 `notification show` 相同，按各客户端的 `ui.toast` 设置显示。
+
+### 关闭、结束与重启
+
+关闭 core 窗格只会分离；终端继续在 core 中运行。Herdr 没有结束 core 终端的命令。程序结束后窗格保留最后的画面。Herdr 重启或连接断开后，Herdr 会重新连接同一个终端；终端由 core 的 id 和它在该 core 上的地址识别，因此不会把同一 socket 上的另一个 core 误认为它。更改 `[core]` 中决定连接目标的设置 (`enabled`、`session`、`socket`、`reconnect_max_seconds`) 会重新连接，core 窗格在新连接上重新连接；其他 `[core]` 设置无需重新连接即可生效。keep 终端 (`hc run --keep`) 失去程序后显示 `lost: waiting for shell`，直到 core 启动新的 shell。
+
+### 视图与大小
+
+每个窗格都从只读流绘制。control 窗格还负责输入，并在显示、获得焦点或改变大小时取得终端的大小；隐藏的窗格从不取得大小。其他查看者拥有大小时，窗格按该大小显示终端。同一个 Herdr 服务器中每个终端只有一个 control 窗格；`--observe` 窗格可以有多个。通过 API 输入 (`pane send-text`、`pane send-keys`、`pane run`) 到当前无法输入的 core 窗格时会失败，而不是丢弃输入：`pane_observe_only`、`pane_not_ready` (尚未连接或与 core 的连接已断开) 或 `pane_ended`。
+
+### 限制
+
+Herdr 通过 Unix socket 连接 herdr-core；尚不支持 Windows。Herdr 的机器 (`herdr machine`) 与 core 的机器 (`rohan/t7`) 是分开的。

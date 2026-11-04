@@ -405,6 +405,9 @@ impl App {
         else {
             return agent_not_ready(id, &params.target);
         };
+        if let Some(refusal) = self.core_input_refusal(resolved.ws_idx, resolved.pane_id) {
+            return encode_error(id, refusal.code, refusal.message);
+        }
         let Some(runtime) = self.lookup_runtime_sender(resolved.ws_idx, resolved.pane_id) else {
             return agent_not_found(id, &params.target);
         };

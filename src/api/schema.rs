@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub mod agents;
 pub mod commands;
 pub mod common;
+pub mod core_terminals;
 pub mod events;
 pub mod integrations;
 pub(crate) mod operations;
@@ -18,6 +19,7 @@ pub mod worktrees;
 pub use agents::*;
 pub use commands::*;
 pub use common::*;
+pub use core_terminals::*;
 pub use events::*;
 pub use integrations::*;
 pub use panes::*;
@@ -145,6 +147,11 @@ operations::define_operations! {
     PluginPaneOpen(PluginPaneOpenParams) => "plugin.pane.open", true, false;
     PluginPaneFocus(PluginPaneFocusParams) => "plugin.pane.focus", true, false;
     PluginPaneClose(PluginPaneCloseParams) => "plugin.pane.close", true, false;
+    CoreStatus(CoreStatusParams) => "core.status", false, false;
+    CoreTerminalList(CoreTerminalListParams) => "core.terminal.list", false, false;
+    CoreTerminalOpen(CoreTerminalOpenParams) => "core.terminal.open", true, false;
+    CoreTerminalRun(CoreTerminalRunParams) => "core.terminal.run", true, false;
+    CoreAttention(CoreAttentionParams) => "core.attention", true, false;
 }
 
 #[cfg(test)]

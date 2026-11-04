@@ -519,6 +519,39 @@ fn restore_tab(
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()));
 
         let cwd = saved_cwd;
+        // A core pane comes back as the same core terminal, attached again
+        // once connected; its program is never started here, and its folder
+        // may live on another machine, so it is not checked locally.
+        if let Some(core) = saved_pane.and_then(|pane| pane.core.as_ref()) {
+            let mut terminal = TerminalState::new(TerminalId::alloc(), cwd);
+            let key = crate::core_client::model::CoreTerminalKey {
+                origin_core_id: core.origin_core_id.clone(),
+                origin_address: core.origin_address.clone(),
+            };
+            let control_taken = core.mode == crate::core_client::model::CoreMode::Control
+                && terminals.iter().any(|terminal: &TerminalState| {
+                    terminal.core.as_ref().is_some_and(|other| {
+                        other.key == key
+                            && other.mode == crate::core_client::model::CoreMode::Control
+                    })
+                });
+            let mode = if control_taken {
+                crate::core_client::model::CoreMode::Observe
+            } else {
+                core.mode
+            };
+            terminal.core = Some(crate::core_client::model::CorePaneBinding::new(
+                key,
+                core.path.clone(),
+                mode,
+            ));
+            if let Some(label) = saved_pane.and_then(|p| p.label.clone()) {
+                terminal.set_manual_label(label);
+            }
+            panes.insert(*id, PaneState::new(terminal.id.clone()));
+            terminals.push(terminal);
+            continue;
+        }
         let has_import = old_id.is_some_and(|old_id| imported_panes.contains_key(old_id));
         if !has_import && !cwd.is_dir() {
             let terminal = unavailable_restored_terminal(
@@ -1554,6 +1587,7 @@ mod tests {
                             }),
                             agent_resume: None,
                             launch_argv: None,
+                            core: None,
                         },
                     )]),
                     zoomed: false,
@@ -1636,6 +1670,7 @@ mod tests {
                                 agent_session: None,
                                 agent_resume: None,
                                 launch_argv: None,
+                                core: None,
                             },
                         ),
                         (
@@ -1648,6 +1683,7 @@ mod tests {
                                 agent_session: None,
                                 agent_resume: None,
                                 launch_argv: None,
+                                core: None,
                             },
                         ),
                     ]),
@@ -1702,6 +1738,7 @@ mod tests {
                     agent_session: None,
                     agent_resume: None,
                     launch_argv: None,
+                    core: None,
                 },
             )
         };
@@ -1718,6 +1755,7 @@ mod tests {
             }),
             agent_resume: None,
             launch_argv: None,
+            core: None,
         };
         let snapshot = SessionSnapshot {
             version: super::super::snapshot::SNAPSHOT_VERSION,
@@ -1870,6 +1908,7 @@ mod tests {
                             }),
                             agent_resume: None,
                             launch_argv: None,
+                            core: None,
                         },
                     )]),
                     zoomed: false,
@@ -2176,6 +2215,7 @@ mod tests {
                 agent_session: None,
                 agent_resume: None,
                 launch_argv: None,
+                core: None,
             },
         );
         let mut history = SessionHistorySnapshot {

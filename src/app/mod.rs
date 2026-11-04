@@ -15,6 +15,7 @@ mod api;
 pub(crate) use api::test_support::exiting_test_command;
 mod api_helpers;
 pub(crate) use api_helpers::limit_snapshot_lines;
+pub(crate) mod core;
 mod creation;
 mod custom_commands;
 mod git_refresh;
@@ -141,6 +142,8 @@ pub struct App {
     pub(crate) agent_metadata_deadline: Option<Instant>,
     pub(crate) pending_agent_resume_deadline: Option<Instant>,
     pub(crate) pending_host_appearance_deadline: Option<Instant>,
+    /// The herdr-core connection and what Herdr remembers about it.
+    pub(crate) core: core::CoreRuntime,
     pane_host_appearance: Option<crate::terminal_theme::HostAppearance>,
     startup_per_agent_delay: Duration,
     next_agent_resume_at: Option<Instant>,
@@ -497,6 +500,7 @@ impl App {
         let mut state = AppState {
             terminals: std::collections::HashMap::new(),
             direct_attach_resize_locks: std::collections::HashSet::new(),
+            core: Default::default(),
             pane_id_aliases: std::collections::HashMap::new(),
             public_pane_id_aliases: std::collections::HashMap::new(),
             workspaces,
@@ -655,6 +659,7 @@ impl App {
             agent_metadata_deadline: None,
             pending_agent_resume_deadline: None,
             pending_host_appearance_deadline: None,
+            core: core::CoreRuntime::new(config.core.clone()),
             pane_host_appearance: None,
             startup_per_agent_delay: Duration::from_millis(
                 config.session.startup_per_agent_delay_ms.into(),
@@ -693,6 +698,7 @@ impl App {
         app.configure_tab_bar_status(&config.ui.tab_bar_right, &config.ui.tab_bar_right_separator);
         app.configure_window_title(&config.ui.window_title);
         app.refresh_restored_workspace_git_metadata();
+        app.apply_core_config(&config.core);
         Ok(app)
     }
 
@@ -756,6 +762,7 @@ impl App {
                 .and_then(|ws| ws.focused_pane_id().map(|pane_id| (idx, pane_id)))
         });
         app.refresh_restored_workspace_git_metadata();
+        app.apply_core_config(&config.core);
         Ok(app)
     }
 
@@ -868,6 +875,9 @@ impl App {
         let mut diagnostics = load_diagnostics.to_vec();
         let invalid_section =
             |section: &str| invalid_sections.iter().any(|invalid| invalid == section);
+        if !invalid_section("core") {
+            self.apply_core_config(&config.core);
+        }
 
         if !invalid_section("keys") {
             match config.live_keybinds_with_diagnostics() {

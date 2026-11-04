@@ -219,6 +219,76 @@ impl TerminalRuntime {
         .map(Self)
     }
 
+    // Core panes take the same host context as PTY panes, but no process.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn attach_core(
+        pane_id: PaneId,
+        rows: u16,
+        cols: u16,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        host_terminal_appearance: Option<crate::terminal_theme::HostAppearance>,
+        handle: crate::core_client::connection::CoreConnectionHandle,
+        spec: crate::pane::core_stream::CoreAttachSpec,
+        events: mpsc::Sender<AppEvent>,
+        render_notify: Arc<Notify>,
+        render_dirty: Arc<RenderSignal>,
+    ) -> std::io::Result<Self> {
+        crate::pane::PaneRuntime::attach_core(
+            pane_id,
+            rows,
+            cols,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            host_terminal_appearance,
+            handle,
+            spec,
+            events,
+            render_notify,
+            render_dirty,
+        )
+        .map(Self)
+    }
+
+    pub(crate) fn is_core(&self) -> bool {
+        self.0.is_core()
+    }
+
+    pub(crate) fn core_reattach(&self, spec: crate::pane::core_stream::CoreAttachSpec) {
+        if let Some(core) = self.0.core_io() {
+            core.reattach(spec);
+        }
+    }
+
+    pub(crate) fn core_size_hint(&self) {
+        if let Some(core) = self.0.core_io() {
+            core.size_hint();
+        }
+    }
+
+    /// A core control pane whose control stream can type now.
+    pub(crate) fn core_accepts_input(&self) -> bool {
+        self.0
+            .core_io()
+            .is_some_and(|core| core.shared.accepts_input())
+    }
+
+    pub(crate) fn core_grid_hint(&self, cols: u16, rows: u16) {
+        if let Some(core) = self.0.core_io() {
+            core.grid_hint(cols, rows);
+        }
+    }
+
+    pub(crate) fn set_core_visible(&self, visible: bool) {
+        if let Some(core) = self.0.core_io() {
+            core.set_visible(visible);
+        }
+    }
+
+    pub(crate) fn set_core_reported_cwd(&self, cwd: Option<std::path::PathBuf>) {
+        self.0.set_core_reported_cwd(cwd);
+    }
+
     pub fn apply_host_terminal_theme(&self, theme: crate::terminal_theme::TerminalTheme) {
         self.0.apply_host_terminal_theme(theme);
     }

@@ -21,6 +21,7 @@ mod cli;
 mod client;
 mod config;
 mod copy_mode;
+mod core_client;
 mod detect;
 mod events;
 use ghostty_vt as ghostty;

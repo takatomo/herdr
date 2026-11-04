@@ -323,6 +323,7 @@ pub struct Config {
     pub advanced: AdvancedConfig,
     pub experimental: ExperimentalConfig,
     pub remote: RemoteConfig,
+    pub core: CoreConfig,
 }
 
 #[derive(Debug)]
@@ -1054,6 +1055,70 @@ pub struct AdvancedConfig {
     /// Maximum scrollback buffer size in bytes retained per pane terminal. Default: 10000000.
     #[serde(alias = "scrollback_lines")]
     pub scrollback_limit_bytes: usize,
+}
+
+/// Showing herdr-core (`hc`) terminals as panes.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct CoreConfig {
+    /// Connect to a running herdr-core and show its terminals as panes. Herdr
+    /// never starts a core. Default: false.
+    pub enabled: bool,
+    /// The hc session to connect to. Default: "default".
+    pub session: String,
+    /// The core socket path; overrides `session`. Unset by default.
+    pub socket: Option<String>,
+    /// Longest wait between reconnect attempts, in seconds. Default: 30.
+    pub reconnect_max_seconds: u64,
+    /// Notify about core terminals that have no pane.
+    pub notify: CoreNotifyConfig,
+    /// Where a core terminal opens by default: "tab" or "split". Default: "tab".
+    pub open_placement: CoreOpenPlacement,
+    /// Scrollback lines a newly attached core pane shows. Default: 200.
+    pub history_lines: u32,
+}
+
+impl Default for CoreConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            session: "default".into(),
+            socket: None,
+            reconnect_max_seconds: 30,
+            notify: CoreNotifyConfig::default(),
+            open_placement: CoreOpenPlacement::Tab,
+            history_lines: 200,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct CoreNotifyConfig {
+    /// When an unplaced core terminal is blocked. Default: true.
+    pub blocked: bool,
+    /// When an unplaced core terminal reports an error. Default: true.
+    pub error: bool,
+    /// When an unplaced core terminal's program finishes. Default: false.
+    pub finished: bool,
+}
+
+impl Default for CoreNotifyConfig {
+    fn default() -> Self {
+        Self {
+            blocked: true,
+            error: true,
+            finished: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CoreOpenPlacement {
+    #[default]
+    Tab,
+    Split,
 }
 
 #[derive(Debug, Deserialize)]

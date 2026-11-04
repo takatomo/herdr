@@ -7378,6 +7378,47 @@ fn notification_show_uses_client_shell_policy_independent_of_server_delivery() {
 }
 
 #[test]
+fn an_unplaced_core_terminal_notice_reaches_client_shells_like_other_notifications() {
+    let mut server = test_headless_server();
+    // An in-app toast: the client shell decides how to show it.
+    server.app.state.toast_config.delivery = config::ToastDelivery::Herdr;
+    let (shell_tx, shell_control, _shell_frames) = test_client_writer();
+    server.clients.insert(
+        1,
+        ClientConnection::new_with_mode(
+            ClientConnectionMode::ClientShell,
+            (80, 24),
+            crate::kitty_graphics::HostCellSize::default(),
+            1,
+            RenderEncoding::SemanticFrame,
+            Some(shell_tx),
+        ),
+    );
+    server.handle_internal_event_with_forwarding(AppEvent::CoreNotify {
+        title: "hc nb: blocked: permission".into(),
+        body: "approve".into(),
+    });
+    assert_eq!(
+        read_server_message(
+            shell_control
+                .recv_timeout(Duration::from_millis(100))
+                .expect("core terminal notification")
+        ),
+        ServerMessage::SemanticNotification(protocol::SemanticNotification {
+            kind: protocol::SemanticNotificationKind::Custom,
+            title: "hc nb: blocked: permission".into(),
+            body: Some("approve".into()),
+            sound: None,
+            agent: None,
+            workspace_id: None,
+            tab_id: None,
+            pane_id: None,
+            position: None,
+        })
+    );
+}
+
+#[test]
 fn client_local_notifications_target_foreground_client_only() {
     let mut server = test_headless_server();
     let (background_tx, background_control_rx, _background_rx) = test_client_writer();

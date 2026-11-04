@@ -162,6 +162,8 @@ pub struct TerminalState {
     agent_process_acquisition_pending: bool,
     pub pending_agent_resume_plan: Option<crate::agent_resume::AgentResumePlan>,
     pub restore_error: Option<String>,
+    /// Set when this pane shows a herdr-core terminal instead of a PTY.
+    pub core: Option<crate::core_client::model::CorePaneBinding>,
 }
 
 impl TerminalState {
@@ -202,7 +204,18 @@ impl TerminalState {
             agent_process_acquisition_pending: false,
             pending_agent_resume_plan: None,
             restore_error: None,
+            core: None,
         }
+    }
+
+    /// Text a pane without a runtime shows: a restore failure, or where its
+    /// core terminal stands.
+    pub(crate) fn placeholder_text(&self) -> Option<String> {
+        self.restore_error.clone().or_else(|| {
+            self.core
+                .as_ref()
+                .and_then(|core| core.phase.placeholder(&core.path))
+        })
     }
 
     pub fn set_detected_agent_process_at(

@@ -173,3 +173,48 @@ herdr agent attach reviewer --takeover
 ```
 
 エージェントではないターミナルで同じダイレクトアタッチ挙動が欲しいときは `herdr terminal attach <terminal_id>` を使ってください。
+
+## herdr-core の端末
+
+Herdr は、動いている [herdr-core](https://herdr.dev/core/) (`hc`) の端末を通常の pane として表示できます。端末・プログラム・寿命・状態は core が持ち、Herdr は表示・配置・入力を受け持ちます。
+
+### 有効にする
+
+```toml
+[core]
+enabled = true
+# session = "default"          # Herdr が使う hc の session
+# socket = "/path/to/hc.sock"  # core の設定で socket を移したときに指定
+```
+
+Herdr は既に動いている core に接続します。core を起動せず、`hc` も実行しないので、一覧や表示で core が起きることはありません。core が無いと `herdr core status` は `disconnected` を示し、Herdr は接続をやり直します。Herdr 自身の `HC_*` の環境変数は読まないので、hc の端末の中で起動した Herdr がその端末の socket に引きずられることはありません。
+
+### 開く・起動する・要対応
+
+```bash
+herdr core list                         # pane の有無を問わず全部の端末
+herdr core open t7                      # 新しいタブ。2 回目は同じ pane にフォーカス
+herdr core open rohan/t7 --split        # core が登録したマシンの端末
+herdr core open t7 --observe            # 見るだけ。入力もサイズ変更もしない
+herdr core run --name review-1 -- reviewer "review src/x.rs"
+herdr core attention                    # 2 件が要対応なら `hc !2`
+herdr core attention next               # 一番長く待っている端末へ
+```
+
+`core.terminal.run` は起動の要求を 1 回だけ送り、再送しません。応答が失われたときは `run_result_unknown` を返すので、もう一度起動せず `herdr core list` で名前を探してください。template の起動では、初回の依頼を送れたかも応答に含まれます。`first message NOT sent (<理由>)` は、端末は動いているが依頼がまだ届いていないという意味なので、その端末を確かめてそこで送ってください。Herdr から起動した端末には、core の環境の上に Herdr の端末 identity (`TERM`・`COLORTERM`・`TERM_PROGRAM`) だけを渡し、`HERDR_*` は渡しません。
+
+### Herdr の表示
+
+core の pane は、プログラム自身の状態 (OSC 7501) を agent の状態として示すので、サイドバー・通知・`agent wait` がほかの agent と同じように働きます。`working`、`blocked` (`permission`・`question`・`auth`)、`error` (要対応に数える)、`idle`、`turn done` です。報告の無い端末は `no status`、終わったプログラムは `exited <code>` です。pane の無い端末は、blocked や error になったときに通知します (`[core.notify]`)。通知は `notification show` と同じく、各 client の `ui.toast` の設定で表示します。
+
+### 閉じる・終わる・再起動
+
+core の pane を閉じても離脱するだけで、端末は core で動き続けます。Herdr に core の端末を終わらせるコマンドはありません。プログラムが終わると pane は最後の画面を残します。Herdr の再起動や接続の切断の後は、同じ端末に接続し直します。端末は core の id とその address で識別するので、同じ socket の別の core と取り違えません。`[core]` の設定のうち接続先を決めるもの (`enabled`・`session`・`socket`・`reconnect_max_seconds`) を変えると接続し直し、core の pane は新しい接続で接続し直します。ほかの `[core]` の設定は接続し直さずに使います。keep の端末 (`hc run --keep`) がプログラムを失うと、core が新しい shell を起動するまで `lost: waiting for shell` を示します。
+
+### 表示とサイズ
+
+各 pane は見るだけの stream から描きます。control の pane は入力も行い、表示されたとき・フォーカスを得たとき・大きさが変わったときに端末のサイズを取ります。隠れている pane はサイズを取りません。別の viewer がサイズを持っているときは、その大きさで表示します。1 つの Herdr server に control の pane は端末ごとに 1 つだけで、`--observe` の pane は複数持てます。API からの入力 (`pane send-text`・`pane send-keys`・`pane run`) は、今入力できない core の pane では入力を捨てずに失敗します: `pane_observe_only`、`pane_not_ready` (まだ接続していない、または core との接続が切れている)、`pane_ended`。
+
+### 制限
+
+Herdr は Unix socket で herdr-core に接続します。Windows はまだ対応していません。Herdr のマシン (`herdr machine`) と core のマシン (`rohan/t7`) は別のものです。
