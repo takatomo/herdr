@@ -154,9 +154,7 @@ mod tests {
     use super::*;
     use crate::app::core::tests::{connect, record, test_app};
     use crate::app::core::{CoreOpenRequest, CorePlacement};
-    use crate::core_client::connection::ConnectionEvent;
     use crate::core_client::model::CoreMode;
-    use crate::core_client::protocol::Notification;
 
     fn folder(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir()
@@ -270,6 +268,8 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn a_pane_whose_program_views_the_terminal_is_where_it_shows() {
+        use crate::core_client::connection::ConnectionEvent;
+        use crate::core_client::protocol::Notification;
         let mut app = test_app();
         app.state.default_shell = "/bin/sh".into();
         let home = folder("viewed");
