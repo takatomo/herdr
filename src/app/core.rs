@@ -21,6 +21,10 @@ use crate::layout::PaneId;
 use crate::pane::core_stream::CoreAttachSpec;
 use crate::terminal::TerminalId;
 
+mod ended;
+mod listing;
+mod placement;
+
 pub(crate) const CORE_SOURCE: &str = "herdr:core";
 const NOTIFY_REPEAT: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -69,6 +73,9 @@ pub(crate) enum CorePlacement {
     Existing,
     Tab,
     Split,
+    /// The pane already showing it, else a tab in the workspace for its
+    /// folder (made when none).
+    Workspace,
 }
 
 #[derive(Debug, Clone)]
@@ -147,6 +154,11 @@ pub(crate) fn resolve_socket(config: &crate::config::CoreConfig) -> std::path::P
                 .join("state")
         });
     state.join("herdr-core").join(session).join(file)
+}
+
+fn record_finished(view: &CoreView, path: &str) -> bool {
+    view.terminal(path)
+        .is_some_and(|record| record.state == "finished")
 }
 
 /// Whether two configs reach the core the same way. Only these settings
@@ -451,6 +463,12 @@ impl App {
                     }
                 }
                 CoreChangeKind::Finished | CoreChangeKind::Removed => {
+                    let end = if kind == CoreChangeKind::Removed {
+                        "removed".to_string()
+                    } else {
+                        self.core_end_label(&path)
+                    };
+                    self.note_core_end(location, end);
                     if !matches!(phase, Some(CorePanePhase::Attached))
                         || kind == CoreChangeKind::Removed
                     {
@@ -479,6 +497,12 @@ impl App {
                 self.sync_core_cwd(location, &path);
             }
             self.reflect_core_pane(location, false);
+            if matches!(
+                kind,
+                CoreChangeKind::Finished | CoreChangeKind::Removed | CoreChangeKind::Lost
+            ) {
+                self.settle_core_pane(location);
+            }
         }
         if panes.is_empty() {
             self.notify_unplaced_core_terminal(&path, kind, before);
@@ -605,10 +629,25 @@ impl App {
                         if needs_attach {
                             self.attach_core_pane(&location, true);
                         }
+                        // An end learned from a snapshot (a missed event):
+                        // a closed stream waits for nothing more.
+                        if record_finished(&self.state.core, &path) {
+                            let label = self.core_end_label(&path);
+                            if let Some(binding) = self.core_binding_mut(&location.terminal_id) {
+                                if matches!(
+                                    binding.phase,
+                                    CorePanePhase::Closing | CorePanePhase::Lost
+                                ) {
+                                    binding.phase = CorePanePhase::Ended(label.clone());
+                                }
+                            }
+                            self.note_core_end(&location, label);
+                        }
                     }
                 }
             }
             self.reflect_core_pane(&location, full);
+            self.settle_core_pane(&location);
         }
     }
 
@@ -731,6 +770,10 @@ impl App {
             phase,
             CorePanePhase::Mismatch(_) | CorePanePhase::NotFound(_)
         );
+        let ended = match &phase {
+            CorePanePhase::Ended(label) => Some(label.clone()),
+            _ => None,
+        };
         if let Some(binding) = self.core_binding_mut(&location.terminal_id) {
             binding.phase = phase;
         }
@@ -738,7 +781,11 @@ impl App {
             // Detach; the placeholder explains why.
             self.terminal_runtimes.remove(&location.terminal_id);
         }
+        if let Some(label) = ended {
+            self.note_core_end(&location, label);
+        }
         self.reflect_core_pane(&location, true);
+        self.settle_core_pane(&location);
         self.state.mark_core_changed();
         self.render_dirty.request_generic();
         self.render_notify.notify_one();
@@ -776,10 +823,18 @@ impl App {
                 Some(_) => CorePanePhase::Closing,
             }
         };
+        let ended = match &phase {
+            CorePanePhase::Ended(label) => Some(label.clone()),
+            _ => None,
+        };
         if let Some(binding) = self.core_binding_mut(&location.terminal_id) {
             binding.phase = phase;
         }
+        if let Some(label) = ended {
+            self.note_core_end(&location, label);
+        }
         self.reflect_core_pane(&location, false);
+        self.settle_core_pane(&location);
         self.state.mark_core_changed();
     }
 
@@ -984,15 +1039,43 @@ impl App {
                 });
             }
         }
-        let cwd = self
+        let picked =
+            request.mode == CoreMode::Control && request.placement == CorePlacement::Workspace;
+        if picked {
+            // A local pane already shows it (`hc attach`): go there, add nothing.
+            if let Some((ws_idx, pane_id)) = self.pane_showing_core_terminal(&path) {
+                self.state.focus_pane_in_workspace(ws_idx, pane_id);
+                self.state.mark_active_tab_seen();
+                self.state.mode = crate::app::Mode::Terminal;
+                if request.close_popup {
+                    self.close_popup_pane();
+                }
+                return Ok(CoreOpenResult {
+                    ws_idx,
+                    pane_id,
+                    created: false,
+                });
+            }
+        }
+        let folder = self
             .state
             .core
             .terminal(&path)
             .filter(|_| crate::core_client::model::split_path(&path).0.is_none())
             .map(|record| std::path::PathBuf::from(&record.cwd))
-            .filter(|cwd| cwd.is_dir())
-            .unwrap_or_else(|| crate::worktree::expand_tilde_path("~"));
-        let (ws_idx, pane_id, terminal) = self.create_core_pane_slot(&request, cwd)?;
+            .filter(|cwd| cwd.is_dir());
+        let (ws_idx, pane_id, terminal, new_workspace) = match (picked, folder) {
+            (true, Some(folder)) => {
+                let (ws_idx, pane_id, terminal, new) =
+                    self.core_workspace_slot(folder, request.focus);
+                (ws_idx, pane_id, terminal, Some(new))
+            }
+            (_, folder) => {
+                let cwd = folder.unwrap_or_else(|| crate::worktree::expand_tilde_path("~"));
+                let (ws_idx, pane_id, terminal) = self.create_core_pane_slot(&request, cwd)?;
+                (ws_idx, pane_id, terminal, None)
+            }
+        };
         let mut terminal = terminal;
         terminal.core = Some(CorePaneBinding::new(key, path, request.mode));
         let terminal_id = terminal.id.clone();
@@ -1012,6 +1095,11 @@ impl App {
         }
         self.attach_core_pane(&location, !request.focus);
         self.reflect_core_pane(&location, true);
+        match new_workspace {
+            Some(true) => self.emit_workspace_open_events(ws_idx),
+            Some(false) => self.emit_tab_created_events(ws_idx, tab_idx),
+            None => {}
+        }
         if request.close_popup {
             self.close_popup_pane();
         }
@@ -1047,7 +1135,7 @@ impl App {
                     result.map_err(|err| CoreError::new("split_failed", err.to_string()))?;
                 Ok((ws_idx, pane_id, terminal))
             }
-            CorePlacement::Tab | CorePlacement::Existing => {
+            CorePlacement::Tab | CorePlacement::Existing | CorePlacement::Workspace => {
                 let (tab_idx, pane_id, terminal) =
                     self.state.workspaces[ws_idx].create_tab_pending(cwd);
                 if request.focus {
@@ -1109,7 +1197,7 @@ mod tests {
     };
     use crate::core_client::protocol::{CoreInfo, HelloResult, MachineView, Status};
 
-    fn test_app() -> App {
+    pub(super) fn test_app() -> App {
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(
             &crate::config::Config::default(),
@@ -1126,7 +1214,11 @@ mod tests {
         app
     }
 
-    fn record(path: &str, state: &str, status: Option<(&str, Option<&str>)>) -> Terminal {
+    pub(super) fn record(
+        path: &str,
+        state: &str,
+        status: Option<(&str, Option<&str>)>,
+    ) -> Terminal {
         Terminal {
             address: path.into(),
             name: Some(format!("n-{path}")),
@@ -1143,7 +1235,7 @@ mod tests {
         }
     }
 
-    fn connect(app: &mut App, terminals: Vec<Terminal>) {
+    pub(super) fn connect(app: &mut App, terminals: Vec<Terminal>) {
         app.state.core.state = CoreConnectionState::Connected;
         app.state.core.hello = Some(HelloResult {
             generation: 1,
@@ -1161,7 +1253,7 @@ mod tests {
         app.state.core.apply_snapshot(1, terminals);
     }
 
-    fn bind(app: &mut App, path: &str, mode: CoreMode) -> CorePaneLocation {
+    pub(super) fn bind(app: &mut App, path: &str, mode: CoreMode) -> CorePaneLocation {
         let ws = &app.state.workspaces[0];
         let pane_id = ws.tabs[0].root_pane;
         let terminal_id = ws.tabs[0].panes[&pane_id].attached_terminal_id.clone();
@@ -1176,7 +1268,7 @@ mod tests {
         }
     }
 
-    fn drain(app: &mut App) -> Vec<AppEvent> {
+    pub(super) fn drain(app: &mut App) -> Vec<AppEvent> {
         let mut events = Vec::new();
         while let Ok(event) = app.event_rx.try_recv() {
             events.push(event);
@@ -1184,7 +1276,7 @@ mod tests {
         events
     }
 
-    fn phase(app: &App, location: &CorePaneLocation) -> CorePanePhase {
+    pub(super) fn phase(app: &App, location: &CorePaneLocation) -> CorePanePhase {
         app.state.terminals[&location.terminal_id]
             .core
             .as_ref()
@@ -1279,14 +1371,16 @@ mod tests {
         app.handle_core_stream_ended(location.pane_id, close("x"), true);
         assert_eq!(phase(&app, &location), CorePanePhase::Interrupted);
 
-        let location = bind(&mut app, "t2", CoreMode::Control);
+        // A control pane whose program ended becomes a shell (see `ended`);
+        // an observer keeps the phase, which is what this test reads.
+        let location = bind(&mut app, "t2", CoreMode::Observe);
         app.handle_core_stream_ended(location.pane_id, close("exited"), false);
         assert_eq!(
             phase(&app, &location),
             CorePanePhase::Ended("exited 3".into())
         );
 
-        let location = bind(&mut app, "t3", CoreMode::Control);
+        let location = bind(&mut app, "t3", CoreMode::Observe);
         app.handle_core_stream_ended(location.pane_id, close("signaled"), false);
         assert_eq!(phase(&app, &location), CorePanePhase::Closing);
         // The event that follows decides: a loss waits for `restarted`.
@@ -1486,7 +1580,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    async fn pump_until(app: &mut App, what: &str, mut done: impl FnMut(&App) -> bool) {
+    pub(super) async fn pump_until(app: &mut App, what: &str, mut done: impl FnMut(&App) -> bool) {
         let deadline = Instant::now() + std::time::Duration::from_secs(5);
         loop {
             while let Ok(event) = app.event_rx.try_recv() {
@@ -1504,7 +1598,7 @@ mod tests {
 
     /// Connects `app` to a fake core and opens its `t1` in a control pane.
     #[cfg(unix)]
-    async fn open_fake_t1(
+    pub(super) async fn open_fake_t1(
         app: &mut App,
         core: &crate::core_client::fake_core::FakeCore,
     ) -> (crate::config::CoreConfig, CorePaneLocation) {

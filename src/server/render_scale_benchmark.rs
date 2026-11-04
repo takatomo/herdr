@@ -54,6 +54,7 @@ impl RenderPipeline {
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.pane_scrollbars = true;
+        connect_bench_core(&mut app);
 
         let mut client = ClientShellState::new(ClientShellConfig::from_config(config));
         client.set_snapshot(Box::new(super::client_shell::snapshot(
@@ -63,6 +64,15 @@ impl RenderPipeline {
             None,
             None,
         )));
+
+        client.set_endpoint_core_terminals(
+            &crate::client::endpoint::ClientEndpointId::Local,
+            None,
+            crate::protocol::endpoint::EndpointCoreTerminals {
+                boot_id: "bench-boot".into(),
+                terminals: app.unplaced_core_agents(),
+            },
+        );
 
         Self {
             app,
@@ -119,6 +129,37 @@ impl RenderPipeline {
 
         (server_elapsed, client_elapsed)
     }
+}
+
+/// A connected core with live agents no pane shows, so the agent list and its
+/// endpoint control carry real rows.
+const BENCH_CORE_AGENTS: usize = 20;
+
+fn connect_bench_core(app: &mut App) {
+    let core = &mut app.state.core;
+    core.state = crate::core_client::model::CoreConnectionState::Connected;
+    core.hello = Some(crate::core_client::protocol::HelloResult {
+        generation: 1,
+        core: crate::core_client::protocol::CoreInfo {
+            id: "bench-core".into(),
+            name: "bench".into(),
+        },
+        features: vec!["viewers".into()],
+        ..Default::default()
+    });
+    core.apply_snapshot(
+        1,
+        (0..BENCH_CORE_AGENTS)
+            .map(|index| crate::core_client::protocol::Terminal {
+                address: format!("t{}", index + 1),
+                state: "live".into(),
+                template: Some("astra".into()),
+                cwd: format!("/work/agent-{index}"),
+                created_ms: index as u64,
+                ..Default::default()
+            })
+            .collect(),
+    );
 }
 
 fn history() -> String {
@@ -270,6 +311,7 @@ fn profile_snapshot_encoding(
             None,
             None,
         );
+        let core_agents = pipeline.app.unplaced_core_agents();
         let construction_elapsed = started.elapsed();
         for client_index in 0..client_count {
             let mut snapshot = template.clone();
@@ -287,6 +329,18 @@ fn profile_snapshot_encoding(
             black_box(
                 bincode::serde::encode_to_vec(message, bincode::config::standard())
                     .expect("benchmark snapshot message should frame"),
+            );
+            // Worst case: the core agent list changed for every client.
+            let core = crate::protocol::endpoint::core_terminals_message(
+                &crate::protocol::endpoint::EndpointCoreTerminals {
+                    boot_id: "bench-boot".into(),
+                    terminals: core_agents.clone(),
+                },
+            )
+            .expect("benchmark core agents should serialize");
+            black_box(
+                bincode::serde::encode_to_vec(core, bincode::config::standard())
+                    .expect("benchmark core agents should frame"),
             );
         }
         (construction_elapsed, started.elapsed())

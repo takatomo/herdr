@@ -149,7 +149,7 @@ operations::define_operations! {
     PluginPaneClose(PluginPaneCloseParams) => "plugin.pane.close", true, false;
     CoreStatus(CoreStatusParams) => "core.status", false, false;
     CoreTerminalList(CoreTerminalListParams) => "core.terminal.list", false, false;
-    CoreTerminalOpen(CoreTerminalOpenParams) => "core.terminal.open", true, false;
+    CoreTerminalOpen(CoreTerminalOpenParams) => "core.terminal.open", true, true;
     CoreTerminalRun(CoreTerminalRunParams) => "core.terminal.run", true, false;
     CoreAttention(CoreAttentionParams) => "core.attention", true, false;
 }

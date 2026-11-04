@@ -1811,6 +1811,11 @@
               "const": "existing",
               "description": "Focus the pane already showing it, else a new tab.",
               "type": "string"
+            },
+            {
+              "const": "workspace",
+              "description": "Focus the pane already showing it (a Herdr pane, or a local pane\nrunning `hc attach` for it), else a new tab in the workspace whose\nfolder is the terminal's, made when there is none.",
+              "type": "string"
             }
           ]
         },

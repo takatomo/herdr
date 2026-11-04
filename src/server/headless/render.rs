@@ -559,6 +559,15 @@ impl HeadlessServer {
         }
 
         let mut broken_clients: Vec<u64> = Vec::new();
+        // Client-independent: built once per pass, never per client.
+        let core_agents = if render_targets
+            .iter()
+            .any(|target| matches!(target.4, ClientConnectionMode::ClientShell))
+        {
+            self.app.unplaced_core_agents()
+        } else {
+            Vec::new()
+        };
         for (client_id, (cols, rows), cell_size, _is_foreground, mode) in render_targets {
             #[cfg(unix)]
             if matches!(mode, ClientConnectionMode::TerminalObserve { .. })
@@ -728,6 +737,32 @@ impl HeadlessServer {
                     client.shell_snapshot = Some(candidate);
                     client.shell_agent_completions = Some(completions);
                     client.shell_agent_view = agent_view;
+                }
+                if client.shell_core_terminals.as_deref().unwrap_or_default()
+                    != core_agents.as_slice()
+                {
+                    let projection = crate::protocol::endpoint::EndpointCoreTerminals {
+                        boot_id: self.client_shell_boot_id.clone(),
+                        terminals: core_agents.clone(),
+                    };
+                    let framed = crate::protocol::endpoint::core_terminals_message(&projection)
+                        .map_err(std::io::Error::other)
+                        .and_then(|message| {
+                            Self::frame_server_message(&message).map_err(std::io::Error::other)
+                        });
+                    let sent = match (framed, client.writer.as_ref()) {
+                        (Ok(framed), Some(writer)) => writer.control.send(framed).is_ok(),
+                        (Err(err), _) => {
+                            warn!(client_id, err = %err, "failed to frame core agents");
+                            false
+                        }
+                        (Ok(_), None) => false,
+                    };
+                    if !sent {
+                        broken_clients.push(client_id);
+                        continue;
+                    }
+                    client.shell_core_terminals = Some(core_agents.clone());
                 }
                 shell_projection_revision = client.shell_projection_revision;
                 if !client.shell_surface_active {

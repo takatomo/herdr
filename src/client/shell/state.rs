@@ -81,6 +81,13 @@ pub(super) enum ClientMobileTarget {
     Menu(usize),
 }
 
+/// A core terminal a row opens, as the endpoint named it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ClientCoreTerminalTarget {
+    pub(super) path: String,
+    pub(super) endpoint_core_id: String,
+}
+
 #[derive(Default)]
 pub(super) struct ShellHitMap {
     pub(super) machines: Vec<MachineHit>,
@@ -94,6 +101,8 @@ pub(super) struct ShellHitMap {
     pub(super) popup: Option<PaneHit>,
     pub(super) pane_splits: Vec<PaneSplitHit>,
     pub(super) agents: Vec<(Rect, String)>,
+    /// Live core agents that no pane shows yet.
+    pub(super) core_terminals: Vec<(Rect, ClientCoreTerminalTarget)>,
     pub(super) endpoint_agents: Vec<(Rect, ClientEndpointId, String)>,
     pub(super) agent_body: Rect,
     pub(super) agent_scrollbar: Rect,

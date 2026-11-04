@@ -50,6 +50,7 @@ impl App {
             Some(CorePlacementParam::Existing) => CorePlacement::Existing,
             Some(CorePlacementParam::Tab) => CorePlacement::Tab,
             Some(CorePlacementParam::Split) => CorePlacement::Split,
+            Some(CorePlacementParam::Workspace) => CorePlacement::Workspace,
             None => match self.core.config.open_placement {
                 crate::config::CoreOpenPlacement::Tab => CorePlacement::Tab,
                 crate::config::CoreOpenPlacement::Split => CorePlacement::Split,

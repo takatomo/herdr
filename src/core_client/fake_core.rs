@@ -28,6 +28,20 @@ impl FakeCore {
 
     /// `resize_notifications`: whether observers get in-stream RESIZE (0.1.17) or not (0.1.16).
     pub(crate) fn start_with(core_id: &'static str, resize_notifications: bool) -> Self {
+        Self::start_full(core_id, resize_notifications, None)
+    }
+
+    /// Also has `finished`, a terminal whose program exited 0: attaching to
+    /// it fails the way hc does (`finished`).
+    pub(crate) fn start_with_finished(core_id: &'static str, finished: &'static str) -> Self {
+        Self::start_full(core_id, true, Some(finished))
+    }
+
+    fn start_full(
+        core_id: &'static str,
+        resize_notifications: bool,
+        finished: Option<&'static str>,
+    ) -> Self {
         let dir = std::env::temp_dir().join(format!(
             "hcf-{}-{}",
             std::process::id(),
@@ -55,6 +69,7 @@ impl FakeCore {
                             stream,
                             core_id,
                             resize_notifications,
+                            finished,
                             received,
                             attaches,
                         );
@@ -111,6 +126,7 @@ fn serve(
     stream: UnixStream,
     core_id: &str,
     resize_notifications: bool,
+    finished: Option<&str>,
     received: Arc<Mutex<Vec<(usize, Frame)>>>,
     attaches: Arc<Mutex<Vec<(usize, Value)>>>,
 ) {
@@ -145,12 +161,24 @@ fn serve(
                 }
                 "machine.list" => json!({"machines": []}),
                 "events.subscribe" => {
-                    json!({"seq": 5, "channel": 1, "terminals": [{"address": "t1", "state": "live"}]})
+                    let mut terminals = vec![json!({"address": "t1", "state": "live"})];
+                    if let Some(finished) = finished {
+                        terminals.push(json!({"address": finished, "state": "finished",
+                            "reason": "exited", "exit_code": 0, "template": "astra"}));
+                    }
+                    json!({"seq": 5, "channel": 1, "terminals": terminals})
                 }
                 "terminal.attach" => {
                     attaches.lock().unwrap().push((index, params.clone()));
-                    if params["terminal"] == "missing" {
-                        let error = json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": "no terminal", "data": {"kind": "not_found"}}});
+                    let ended = finished.is_some_and(|finished| params["terminal"] == finished);
+                    if params["terminal"] == "missing" || ended {
+                        let error = if ended {
+                            json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000,
+                                "message": format!("{} has finished", params["terminal"].as_str().unwrap_or("")),
+                                "data": {"kind": "finished"}}})
+                        } else {
+                            json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": "no terminal", "data": {"kind": "not_found"}}})
+                        };
                         writer
                             .write_all(&encode_frame(
                                 0,

@@ -195,6 +195,7 @@ Herdr は既に動いている core に接続します。core を起動せず、
 herdr core list                         # pane の有無を問わず全部の端末
 herdr core open t7                      # 新しいタブ。2 回目は同じ pane にフォーカス
 herdr core open rohan/t7 --split        # core が登録したマシンの端末
+herdr core open t7 --workspace          # 表示中の pane、無ければフォルダのワークスペースのタブ
 herdr core open t7 --observe            # 見るだけ。入力もサイズ変更もしない
 herdr core run --name review-1 -- reviewer "review src/x.rs"
 herdr core attention                    # 2 件が要対応なら `hc !2`
@@ -207,9 +208,11 @@ herdr core attention next               # 一番長く待っている端末へ
 
 core の pane は、プログラム自身の状態 (OSC 7501) を agent の状態として示すので、サイドバー・通知・`agent wait` がほかの agent と同じように働きます。`working`、`blocked` (`permission`・`question`・`auth`)、`error` (要対応に数える)、`idle`、`turn done` です。報告の無い端末は `no status`、終わったプログラムは `exited <code>` です。pane の無い端末は、blocked や error になったときに通知します (`[core.notify]`)。通知は `notification show` と同じく、各 client の `ui.toast` の設定で表示します。
 
+サイドバーの agent の一覧には、まだ pane に出ていない稼働中の core の agent も、フォルダと状態とともに出ます。template から起動した端末、自分の状態を報告する端末、既知の agent が動く端末が対象で、build などの補助の端末は出しません。クリックすると `--workspace` と同じく開きます。既に表示している pane (core の pane、またはその端末を `hc attach` するローカルの pane) があればそこへ移り、無ければ端末のフォルダを持つワークスペースにタブを開き、そのワークスペースが無ければ作ります。フォルダは実体の path で比べるので、同じ名前の別のフォルダはまとめません。端末を選ぶまでフォーカスは動きません。`hc` の一覧から選んだ `hc attach` は、core が表示者を知らせる (`hello.features` に `viewers`) ときに分かります。そうでない core では `hc attach <端末>` だけが分かります。
+
 ### 閉じる・終わる・再起動
 
-core の pane を閉じても離脱するだけで、端末は core で動き続けます。Herdr に core の端末を終わらせるコマンドはありません。プログラムが終わると pane は最後の画面を残します。Herdr の再起動や接続の切断の後は、同じ端末に接続し直します。端末は core の id とその address で識別するので、同じ socket の別の core と取り違えません。`[core]` の設定のうち接続先を決めるもの (`enabled`・`session`・`socket`・`reconnect_max_seconds`) を変えると接続し直し、core の pane は新しい接続で接続し直します。ほかの `[core]` の設定は接続し直さずに使います。keep の端末 (`hc run --keep`) がプログラムを失うと、core が新しい shell を起動するまで `lost: waiting for shell` を示します。
+core の pane を閉じても離脱するだけで、端末は core で動き続けます。Herdr に core の端末を終わらせるコマンドはありません。ローカルの control の pane のプログラムが確定して終わると (core の記録が finished を示すと)、出力をすべて書いた後に、その pane は同じフォルダのシェルになります。最後の画面はプロンプトの上に残り、`[hc t7 exited 0]` のような 1 行が続きます。プログラムを起動し直すことはありません。接続の切断、新しい shell を待つ keep の端末、observe の pane、別のマシンの端末は、最後の画面を残します。Herdr の再起動や接続の切断の後は、同じ端末に接続し直します。端末は core の id とその address で識別するので、同じ socket の別の core と取り違えません。`[core]` の設定のうち接続先を決めるもの (`enabled`・`session`・`socket`・`reconnect_max_seconds`) を変えると接続し直し、core の pane は新しい接続で接続し直します。ほかの `[core]` の設定は接続し直さずに使います。keep の端末 (`hc run --keep`) がプログラムを失うと、core が新しい shell を起動するまで `lost: waiting for shell` を示します。
 
 ### 表示とサイズ
 
@@ -217,4 +220,4 @@ core の pane を閉じても離脱するだけで、端末は core で動き続
 
 ### 制限
 
-Herdr は Unix socket で herdr-core に接続します。Windows はまだ対応していません。Herdr のマシン (`herdr machine`) と core のマシン (`rohan/t7`) は別のものです。
+Herdr は Unix socket で herdr-core に接続します。Windows はまだ対応していません。Herdr のマシン (`herdr machine`) と core のマシン (`rohan/t7`) は別のものです。pane の無い core の agent は、1 つの Herdr server のサイドバーに出し、複数の server をまとめた一覧には出しません。agent のキー (`focus_agent`・`next_agent`) もまだ届きません。

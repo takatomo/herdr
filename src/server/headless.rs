@@ -2020,6 +2020,22 @@ impl HeadlessServer {
                 }
                 self.send_to_client(client_id, completion_message);
                 self.send_to_client(client_id, snapshot_message);
+                let core_agents = self.app.unplaced_core_agents();
+                if !core_agents.is_empty() {
+                    let projection = crate::protocol::endpoint::EndpointCoreTerminals {
+                        boot_id: self.client_shell_boot_id.clone(),
+                        terminals: core_agents.clone(),
+                    };
+                    match crate::protocol::endpoint::core_terminals_message(&projection) {
+                        Ok(message) => {
+                            self.send_to_client(client_id, message);
+                            if let Some(client) = self.clients.get_mut(&client_id) {
+                                client.shell_core_terminals = Some(core_agents);
+                            }
+                        }
+                        Err(err) => warn!(client_id, err = %err, "failed to encode core agents"),
+                    }
+                }
                 if surface_active {
                     self.foreground_client_id = Some(client_id);
                 }

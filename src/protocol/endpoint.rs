@@ -31,12 +31,52 @@ pub const AGENT_VIEW_PROJECTION_CAPABILITY: &str = "agent_view_projection";
 pub const AGENT_VIEW_PROJECTION_KIND: &str = "endpoint.agent-view.v1";
 pub const AGENT_COMPLETIONS_CAPABILITY: &str = "agent_completions";
 pub const AGENT_COMPLETIONS_KIND: &str = "endpoint.agent-completions.v1";
+/// Optional companion: live core (herdr-core) agents that no pane shows yet.
+pub const CORE_TERMINALS_KIND: &str = "endpoint.core-terminals.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EndpointAgentCompletions {
     pub boot_id: String,
     pub revision: u64,
     pub completions: std::collections::BTreeMap<String, u64>,
+}
+
+/// Live core agents without a pane, as one endpoint boot sees them. Older
+/// clients ignore this control; older servers never send it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EndpointCoreTerminals {
+    pub boot_id: String,
+    #[serde(default)]
+    pub terminals: Vec<EndpointCoreTerminal>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EndpointCoreTerminal {
+    /// The core's path for it (`t7`, `rohan/t7`); sent back to show it.
+    pub path: String,
+    /// The core it was read from; showing it is refused on another core.
+    pub endpoint_core_id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The program's own name, else its template, else `hc`.
+    pub agent: String,
+    /// Where it started.
+    pub cwd: String,
+    #[serde(deserialize_with = "deserialize_agent_status")]
+    pub agent_status: crate::api::schema::AgentStatus,
+    /// How Herdr words its state (`blocked: permission`, `turn done`, ...).
+    pub state_label: String,
+}
+
+fn deserialize_agent_status<'de, D>(
+    deserializer: D,
+) -> Result<crate::api::schema::AgentStatus, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    Ok(serde_json::from_value(serde_json::Value::String(value))
+        .unwrap_or(crate::api::schema::AgentStatus::Unknown))
 }
 
 fn default_true() -> bool {
@@ -118,6 +158,15 @@ pub fn agent_completions_message(
 ) -> serde_json::Result<ServerMessage> {
     Ok(ServerMessage::EndpointControl {
         kind: AGENT_COMPLETIONS_KIND.into(),
+        data: serde_json::to_string(projection)?,
+    })
+}
+
+pub fn core_terminals_message(
+    projection: &EndpointCoreTerminals,
+) -> serde_json::Result<ServerMessage> {
+    Ok(ServerMessage::EndpointControl {
+        kind: CORE_TERMINALS_KIND.into(),
         data: serde_json::to_string(projection)?,
     })
 }

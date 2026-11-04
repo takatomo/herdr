@@ -15,6 +15,8 @@ pub(super) struct AgentRow {
     pub(super) status: crate::api::schema::AgentStatus,
     pub(super) focused: bool,
     pub(super) rows: Vec<Vec<crate::ui::ResolvedToken>>,
+    /// Set for a core terminal no pane shows yet (then `pane_id` is empty).
+    pub(super) core: Option<ClientCoreTerminalTarget>,
 }
 
 pub(super) fn ordered_agent_pane_ids(
@@ -53,6 +55,7 @@ pub(super) fn render_agent_panel(
     buffer: &mut Buffer,
     area: Rect,
     snapshot: &ClientShellSnapshot,
+    core_terminals: &[crate::protocol::endpoint::EndpointCoreTerminal],
     config: &ClientShellConfig,
     agent_scroll: &mut usize,
     hits: &mut ShellHitMap,
@@ -67,7 +70,8 @@ pub(super) fn render_agent_panel(
         return;
     }
 
-    let rows = agent_rows(snapshot, config, None);
+    let mut rows = agent_rows(snapshot, config, None);
+    rows.extend(core_terminal_rows(snapshot, core_terminals, config));
     render_agent_list(
         buffer,
         area,
@@ -81,10 +85,66 @@ pub(super) fn render_agent_panel(
         hits,
         |row| row.rows.len(),
         |buffer, rect, row, hits| {
-            hits.agents.push((rect, row.pane_id.clone()));
+            match &row.core {
+                Some(target) => hits.core_terminals.push((rect, target.clone())),
+                None => hits.agents.push((rect, row.pane_id.clone())),
+            }
             render_agent_row(buffer, rect, row, config);
         },
     );
+}
+
+/// Rows for live core agents no pane shows yet, after the pane rows. A
+/// plugin's agent view filters panes only, so these are left out under one.
+pub(super) fn core_terminal_rows(
+    snapshot: &ClientShellSnapshot,
+    core_terminals: &[crate::protocol::endpoint::EndpointCoreTerminal],
+    config: &ClientShellConfig,
+) -> Vec<AgentRow> {
+    if snapshot.agent_view_label.is_some() {
+        return Vec::new();
+    }
+    let tokens = HashMap::new();
+    core_terminals
+        .iter()
+        .map(|terminal| {
+            let (machine, _) = crate::core_client::model::split_path(&terminal.path);
+            let folder = std::path::Path::new(&terminal.cwd)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| terminal.cwd.clone());
+            let shown = terminal
+                .name
+                .as_deref()
+                .map(|name| format!("{name} {}", terminal.path))
+                .unwrap_or_else(|| terminal.path.clone());
+            let rows = crate::ui::sidebar_agent_rows(
+                &config.agents,
+                crate::ui::AgentTokenContext {
+                    machine,
+                    workspace: &folder,
+                    tab: None,
+                    pane: None,
+                    agent_label: Some(&shown),
+                    terminal_title: None,
+                    terminal_title_stripped: None,
+                    canonical_agent: crate::detect::parse_agent_label(&terminal.agent),
+                    tokens: &tokens,
+                },
+                &terminal.state_label,
+            );
+            AgentRow {
+                pane_id: String::new(),
+                status: terminal.agent_status,
+                focused: false,
+                rows,
+                core: Some(ClientCoreTerminalTarget {
+                    path: terminal.path.clone(),
+                    endpoint_core_id: terminal.endpoint_core_id.clone(),
+                }),
+            }
+        })
+        .collect()
 }
 
 pub(super) fn render_agent_panel_header(
@@ -315,6 +375,7 @@ pub(super) fn agent_row(
         status: agent.agent_status,
         focused: agent.focused,
         rows,
+        core: None,
     })
 }
 

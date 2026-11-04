@@ -1682,3 +1682,89 @@ fn semantic_notifications_use_client_policy_and_stable_navigation_targets() {
     assert!(state.visible_notification.is_none());
     assert_eq!(state.pending_notifications.len(), 1);
 }
+
+fn core_agents(boot_id: &str) -> crate::protocol::endpoint::EndpointCoreTerminals {
+    crate::protocol::endpoint::EndpointCoreTerminals {
+        boot_id: boot_id.into(),
+        terminals: vec![crate::protocol::endpoint::EndpointCoreTerminal {
+            path: "t7".into(),
+            endpoint_core_id: "core-a".into(),
+            name: Some("rev".into()),
+            agent: "codex".into(),
+            cwd: "/work/app".into(),
+            agent_status: AgentStatus::Blocked,
+            state_label: "blocked: permission".into(),
+        }],
+    }
+}
+
+fn click(state: &mut ClientShellState, rect: Rect) -> ClientShellInput {
+    state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: rect.x,
+        row: rect.y,
+        modifiers: KeyModifiers::empty(),
+    })])
+}
+
+fn opens_t7_in_its_workspace(outcome: &ClientShellInput) -> bool {
+    matches!(
+        &outcome.actions[..],
+        [ClientShellAction::Endpoint { request, .. }]
+            if matches!(
+                &request.method,
+                crate::api::schema::Method::CoreTerminalOpen(params)
+                    if params.terminal == "t7"
+                        && params.endpoint_core_id.as_deref() == Some("core-a")
+                        && params.placement == Some(crate::api::schema::CorePlacementParam::Workspace)
+            )
+    )
+}
+
+#[test]
+fn a_core_agent_without_a_pane_is_listed_and_opens_in_its_workspace() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    state.set_endpoint_core_terminals(&ClientEndpointId::Local, None, core_agents("boot-1"));
+    let frame = state.compose(106, 30).expect("agent sidebar frame");
+    let text = (0..frame.height)
+        .map(|row| {
+            (0..frame.width)
+                .map(|column| {
+                    frame.cells[row as usize * frame.width as usize + column as usize]
+                        .symbol
+                        .as_str()
+                })
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("rev t7"), "frame: {text}");
+    assert!(text.contains("app"), "frame: {text}");
+    let row = state.hits.core_terminals.first().expect("core agent row").0;
+    assert!(opens_t7_in_its_workspace(&click(&mut state, row)));
+
+    // Folded, the row is still there to pick.
+    state.sidebar_collapsed = true;
+    state.compose(106, 30).expect("compact frame");
+    let row = state
+        .hits
+        .core_terminals
+        .first()
+        .expect("compact core row")
+        .0;
+    assert!(opens_t7_in_its_workspace(&click(&mut state, row)));
+    state.sidebar_collapsed = false;
+
+    // A list from another boot, or under a plugin's agent view, is not shown.
+    state.set_endpoint_core_terminals(&ClientEndpointId::Local, None, core_agents("boot-0"));
+    state.compose(106, 30).expect("frame");
+    assert!(state.hits.core_terminals.is_empty());
+    state.set_endpoint_core_terminals(&ClientEndpointId::Local, None, core_agents("boot-1"));
+    let mut filtered = snapshot();
+    filtered.agent_view_label = Some("focus".into());
+    state.set_snapshot(Box::new(filtered));
+    state.compose(106, 30).expect("frame");
+    assert!(state.hits.core_terminals.is_empty());
+}

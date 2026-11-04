@@ -22,6 +22,12 @@ pub(crate) struct ClientShellEndpoint {
     pending_agent_view_projection: Option<ClientEndpointAgentViewProjection>,
     pub(crate) agent_view_projection_supported: bool,
     pub(crate) methods: Option<HashSet<String>>,
+    /// Live core agents without a pane, as this endpoint last reported them
+    /// (with the connection generation they came on).
+    pub(crate) core_terminals: Option<(
+        Option<u64>,
+        crate::protocol::endpoint::EndpointCoreTerminals,
+    )>,
 }
 
 pub(super) struct MachineHit {
@@ -88,6 +94,7 @@ impl ClientShellState {
                 agent_view_projection_supported: previous
                     .is_some_and(|endpoint| endpoint.agent_view_projection_supported),
                 methods: previous.and_then(|endpoint| endpoint.methods.clone()),
+                core_terminals: previous.and_then(|endpoint| endpoint.core_terminals.clone()),
             });
         }
 
@@ -320,6 +327,21 @@ impl ClientShellState {
             .snapshot
             .as_deref()
             .map(|snapshot| (snapshot.boot_id.as_str(), snapshot.revision))
+    }
+
+    pub(crate) fn set_endpoint_core_terminals(
+        &mut self,
+        endpoint_id: &ClientEndpointId,
+        generation: Option<u64>,
+        projection: crate::protocol::endpoint::EndpointCoreTerminals,
+    ) {
+        if let Some(endpoint) = self
+            .endpoints
+            .iter_mut()
+            .find(|endpoint| &endpoint.endpoint_id == endpoint_id)
+        {
+            endpoint.core_terminals = Some((generation, projection));
+        }
     }
 
     pub(crate) fn set_endpoint_agent_completions(
@@ -729,6 +751,24 @@ pub(super) fn endpoint_status_presentation(
     }
 }
 
+/// The active endpoint's live core agents without a pane, when they belong
+/// to the snapshot shown now (same connection and boot).
+pub(super) fn active_core_terminals<'a>(
+    endpoints: &'a [ClientShellEndpoint],
+    active_endpoint_id: &ClientEndpointId,
+) -> &'a [crate::protocol::endpoint::EndpointCoreTerminal] {
+    endpoints
+        .iter()
+        .find(|endpoint| &endpoint.endpoint_id == active_endpoint_id)
+        .and_then(|endpoint| {
+            let (generation, projection) = endpoint.core_terminals.as_ref()?;
+            let snapshot = endpoint.snapshot.as_deref()?;
+            (*generation == endpoint.snapshot_generation && projection.boot_id == snapshot.boot_id)
+                .then_some(projection.terminals.as_slice())
+        })
+        .unwrap_or(&[])
+}
+
 pub(super) fn local_endpoint() -> ClientShellEndpoint {
     ClientShellEndpoint {
         endpoint_id: ClientEndpointId::Local,
@@ -742,5 +782,6 @@ pub(super) fn local_endpoint() -> ClientShellEndpoint {
         pending_agent_view_projection: None,
         agent_view_projection_supported: false,
         methods: None,
+        core_terminals: None,
     }
 }

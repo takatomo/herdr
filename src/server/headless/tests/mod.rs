@@ -809,6 +809,82 @@ async fn completion_guard_endpoint_pairs_runtime_completions_with_snapshots() {
 }
 
 #[tokio::test]
+async fn client_shells_hear_which_core_agents_have_no_pane() {
+    let mut server = test_headless_server();
+    server.app.state.workspaces = vec![crate::workspace::Workspace::test_new("endpoint")];
+    server.app.state.ensure_test_terminals();
+    server.app.state.active = Some(0);
+    let core = &mut server.app.state.core;
+    core.state = crate::core_client::model::CoreConnectionState::Connected;
+    core.hello = Some(crate::core_client::protocol::HelloResult {
+        generation: 1,
+        core: crate::core_client::protocol::CoreInfo {
+            id: "core-a".into(),
+            name: "mbp".into(),
+        },
+        ..Default::default()
+    });
+    core.apply_snapshot(
+        1,
+        vec![crate::core_client::protocol::Terminal {
+            address: "t7".into(),
+            state: "live".into(),
+            template: Some("astra".into()),
+            cwd: "/work/app".into(),
+            ..Default::default()
+        }],
+    );
+    let (writer, control_rx, _render_rx) = test_client_writer();
+    server.handle_server_event(ServerEvent::ClientShellConnected {
+        client_id: 79,
+        surface_cols: 80,
+        surface_rows: 24,
+        cell_width_px: 0,
+        cell_height_px: 0,
+        pixel_mouse: false,
+        direct_graphics: false,
+        endpoint_keybindings: false,
+        mouse_capture: false,
+        surface_active: false,
+        surface_reuse: false,
+        surface_delta: false,
+        surface_scroll: false,
+        writer,
+    });
+    let (snapshot, _) = client_shell_projection(&control_rx);
+    let core_agents = |receiver: &std::sync::mpsc::Receiver<Vec<u8>>| loop {
+        let ServerMessage::EndpointControl { kind, data } = read_server_message(
+            receiver
+                .recv_timeout(Duration::from_secs(1))
+                .expect("core agents"),
+        ) else {
+            continue;
+        };
+        if kind == protocol::endpoint::CORE_TERMINALS_KIND {
+            break serde_json::from_str::<protocol::endpoint::EndpointCoreTerminals>(&data)
+                .unwrap();
+        }
+    };
+    let listed = core_agents(&control_rx);
+    assert_eq!(listed.boot_id, snapshot.boot_id);
+    assert_eq!(listed.terminals.len(), 1);
+    assert_eq!(listed.terminals[0].path, "t7");
+    assert_eq!(listed.terminals[0].state_label, "no status");
+
+    server.app.state.core.apply_event(
+        2,
+        "status",
+        Some("t7"),
+        &serde_json::json!({"status": {"state": "working", "app": "codex"}, "reported": true}),
+        0,
+    );
+    server.render_and_stream();
+    let listed = core_agents(&control_rx);
+    assert_eq!(listed.terminals[0].state_label, "working");
+    shutdown_test_runtimes(&mut server);
+}
+
+#[tokio::test]
 async fn client_shell_endpoint_request_uses_the_selected_connection() {
     let mut server = test_headless_server();
     server.app.state.workspaces = vec![crate::workspace::Workspace::test_new("endpoint")];

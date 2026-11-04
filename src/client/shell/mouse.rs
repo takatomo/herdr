@@ -2159,6 +2159,32 @@ impl ClientShellState {
                     );
                     return;
                 }
+                let core_target = self
+                    .hits
+                    .core_terminals
+                    .iter()
+                    .find(|(rect, _)| super::contains(*rect, point))
+                    .map(|(_, target)| target.clone());
+                if let Some(target) = core_target {
+                    // Shown where a person would look for it: the pane that
+                    // shows it, else a tab of the workspace for its folder.
+                    self.push_endpoint_method(
+                        crate::api::schema::Method::CoreTerminalOpen(
+                            crate::api::schema::CoreTerminalOpenParams {
+                                endpoint_core_id: Some(target.endpoint_core_id),
+                                terminal: target.path,
+                                mode: None,
+                                placement: Some(crate::api::schema::CorePlacementParam::Workspace),
+                                target_pane_id: None,
+                                direction: None,
+                                focus: Some(true),
+                                close_popup: false,
+                            },
+                        ),
+                        outcome,
+                    );
+                    return;
+                }
                 let scrollbar_hit = self
                     .hits
                     .panes

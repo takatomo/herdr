@@ -366,6 +366,7 @@ impl ClientShellState {
             crate::api::schema::Method::WorkspaceCreate(params) => params.focus,
             crate::api::schema::Method::TabCreate(params) => params.focus,
             crate::api::schema::Method::PaneSplit(params) => params.focus,
+            crate::api::schema::Method::CoreTerminalOpen(params) => params.focus != Some(false),
             _ => false,
         };
         if changes_focus {

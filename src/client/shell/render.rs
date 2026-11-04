@@ -292,6 +292,7 @@ pub(super) fn render_shell(
                 buffer,
                 layout.sidebar,
                 snapshot,
+                super::endpoints::active_core_terminals(state.endpoints, state.active_endpoint_id),
                 config,
                 state
                     .selected_workspace_id
@@ -331,6 +332,7 @@ pub(super) fn render_shell(
         hits.machines.clear();
         hits.workspaces.clear();
         hits.agents.clear();
+        hits.core_terminals.clear();
         hits.endpoint_agents.clear();
         hits.tab_scroll_left = Rect::default();
         hits.tab_scroll_right = Rect::default();

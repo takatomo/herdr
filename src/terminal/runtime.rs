@@ -279,6 +279,14 @@ impl TerminalRuntime {
         }
     }
 
+    /// Not a core pane, or a core pane that will write no more output: every
+    /// render attach it asked for was handled and no stream is left open.
+    pub(crate) fn core_output_settled(&self) -> bool {
+        self.0
+            .core_io()
+            .is_none_or(|core| core.shared.settle.settled())
+    }
+
     pub(crate) fn set_core_visible(&self, visible: bool) {
         if let Some(core) = self.0.core_io() {
             core.set_visible(visible);

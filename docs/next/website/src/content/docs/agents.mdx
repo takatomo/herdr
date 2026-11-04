@@ -195,6 +195,7 @@ Herdr connects to a core that is already running. It never starts a core and nev
 herdr core list                         # every terminal, with or without a pane
 herdr core open t7                      # a new tab; a second open focuses the same pane
 herdr core open rohan/t7 --split        # a terminal on a machine the core added
+herdr core open t7 --workspace          # the pane showing it, else a tab in the workspace for its folder
 herdr core open t7 --observe            # watch only: no typing, no resizing
 herdr core run --name review-1 -- reviewer "review src/x.rs"
 herdr core attention                    # `hc !2` when two terminals need you
@@ -207,9 +208,11 @@ herdr core attention next               # go to the one waiting longest
 
 A core pane reports the program's own status (OSC 7501) as its agent state, so the sidebar, notifications and `agent wait` work as for other agents: `working`, `blocked` (with `permission`, `question` or `auth`), `error` (counted as needing attention), `idle` and `turn done`. A terminal that never reported shows `no status`; a finished program shows `exited <code>`. Terminals without a pane notify when they become blocked or report an error (`[core.notify]`); the notice is shown like `notification show`, following each client's `ui.toast` settings.
 
+The sidebar's agent list also shows live core agents that no pane shows yet: terminals started from a template, reporting their own status, or running a known agent (helpers such as builds are left out), with their folder and state. Clicking one opens it like `--workspace`: Herdr goes to the pane that already shows it, which can be a core pane or a local pane running `hc attach` for it, else opens a tab in the workspace whose folder is the terminal's folder, making that workspace when there is none. Folders are compared as real paths, so two folders with the same name stay apart, and nothing moves focus until you pick a terminal. A `hc attach` picked from `hc`'s own list is recognised when the core reports its viewers (`viewers` in `hello.features`); with other cores only `hc attach <terminal>` is.
+
 ### Closing, ending and restarts
 
-Closing a core pane only detaches; the terminal keeps running in the core. Herdr has no command that ends a core terminal. When the program ends, the pane keeps its last screen. After a Herdr restart or a dropped line, Herdr attaches the same terminal again; it is identified by the core's id and its address there, so a different core on the same socket is never mistaken for it. Changing the `[core]` settings that pick the core (`enabled`, `session`, `socket`, `reconnect_max_seconds`) reconnects, and core panes attach again on the new connection; other `[core]` settings apply without reconnecting. A kept terminal (`hc run --keep`) that loses its program shows `lost: waiting for shell` until the core starts the new shell.
+Closing a core pane only detaches; the terminal keeps running in the core. Herdr has no command that ends a core terminal. When the program of a local control pane ends for good (the core's record says it finished), the pane becomes a shell in the same folder once all its output is written: the last screen stays above the prompt, followed by a line such as `[hc t7 exited 0]`, and the program never runs again. A dropped line, a kept terminal waiting for its new shell, observe panes and terminals on another machine keep their last screen instead. After a Herdr restart or a dropped line, Herdr attaches the same terminal again; it is identified by the core's id and its address there, so a different core on the same socket is never mistaken for it. Changing the `[core]` settings that pick the core (`enabled`, `session`, `socket`, `reconnect_max_seconds`) reconnects, and core panes attach again on the new connection; other `[core]` settings apply without reconnecting. A kept terminal (`hc run --keep`) that loses its program shows `lost: waiting for shell` until the core starts the new shell.
 
 ### Views and size
 
@@ -217,4 +220,4 @@ Each pane draws from a watch-only stream. A control pane also types, and takes t
 
 ### Limits
 
-Herdr connects to herdr-core over its Unix socket; Windows is not supported yet. Herdr's machines (`herdr machine`) and the core's machines (`rohan/t7`) are separate.
+Herdr connects to herdr-core over its Unix socket; Windows is not supported yet. Herdr's machines (`herdr machine`) and the core's machines (`rohan/t7`) are separate. Core agents without a pane are listed in the sidebar of a single Herdr server, not in the list that gathers several servers, and agent keys (`focus_agent`, `next_agent`) do not reach them yet.

@@ -14,7 +14,7 @@ const USAGE: &str = "\
 usage:
   herdr core status [--json]
   herdr core list [--state S] [--machine M] [--cwd DIR] [--text T] [--label K=V]... [--placed|--unplaced] [--json]
-  herdr core open <terminal> [--observe] [--tab|--split|--existing] [--down] [--target PANE] [--no-focus]
+  herdr core open <terminal> [--observe] [--tab|--split|--existing|--workspace] [--down] [--target PANE] [--no-focus]
                   [--endpoint-core-id ID] [--close-popup] [--json]
   herdr core run [--cwd DIR] [--name N] [--label K=V]... [--parent T] [--outlive-parent] [--keep] [--on MACHINE]
                  [--no-notify] [--line LINE] [--no-open] [--observe] [--tab|--split] [--no-focus]
@@ -331,6 +331,8 @@ impl Flags {
             Some(CorePlacementParam::Tab)
         } else if self.has("--existing") {
             Some(CorePlacementParam::Existing)
+        } else if self.has("--workspace") {
+            Some(CorePlacementParam::Workspace)
         } else {
             None
         }

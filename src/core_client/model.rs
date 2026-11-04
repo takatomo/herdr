@@ -71,6 +71,9 @@ pub(crate) struct CorePaneBinding {
     pub phase: CorePanePhase,
     /// Last state reported into Herdr for this pane, to skip repeats.
     pub reported: Option<(AgentState, String, Option<String>, String)>,
+    /// How the program ended, once the core's record said so for good
+    /// (`exited 0`): kept after the record is removed.
+    pub end: Option<String>,
 }
 
 impl CorePaneBinding {
@@ -81,6 +84,7 @@ impl CorePaneBinding {
             mode,
             phase: CorePanePhase::Pending,
             reported: None,
+            end: None,
         }
     }
 }
@@ -392,6 +396,14 @@ impl CoreView {
                         terminal.foreground = serde_json::from_value(data.clone()).ok();
                         change(CoreChangeKind::Other)
                     }
+                    "viewers" => {
+                        terminal.viewers = data
+                            .get("viewers")
+                            .cloned()
+                            .and_then(|viewers| serde_json::from_value(viewers).ok())
+                            .unwrap_or_default();
+                        change(CoreChangeKind::Other)
+                    }
                     _ => None,
                 }
             }
@@ -506,6 +518,39 @@ pub(crate) fn presentation(terminal: &Terminal) -> CorePresentation {
         label,
         message,
         attention,
+    }
+}
+
+/// Whether a core terminal runs a coding agent: started from a template,
+/// reporting its own status, or with a known agent in front. Helpers (builds,
+/// waits, watchers) are none of these.
+pub(crate) fn is_agent_terminal(terminal: &Terminal) -> bool {
+    terminal
+        .template
+        .as_deref()
+        .is_some_and(|template| !template.is_empty())
+        || terminal.status.is_some()
+        || terminal
+            .foreground
+            .as_ref()
+            .is_some_and(|foreground| crate::detect::identify_agent(&foreground.name).is_some())
+}
+
+/// How a listed core terminal's state reads in an agent list.
+pub(crate) fn listed_status(terminal: &Terminal) -> crate::api::schema::AgentStatus {
+    use crate::api::schema::AgentStatus;
+    if terminal
+        .status
+        .as_ref()
+        .is_some_and(|status| status.state == "done")
+    {
+        return AgentStatus::Done;
+    }
+    match presentation(terminal).state {
+        AgentState::Idle => AgentStatus::Idle,
+        AgentState::Working => AgentStatus::Working,
+        AgentState::Blocked => AgentStatus::Blocked,
+        AgentState::Unknown => AgentStatus::Unknown,
     }
 }
 

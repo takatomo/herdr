@@ -195,6 +195,7 @@ Herdr 只连接已经运行的 core。它从不启动 core，也从不运行 `hc
 herdr core list                         # 所有终端，无论是否有窗格
 herdr core open t7                      # 新标签页；再次打开会聚焦同一窗格
 herdr core open rohan/t7 --split        # core 添加的机器上的终端
+herdr core open t7 --workspace          # 已显示它的窗格，否则是其文件夹对应工作区中的标签页
 herdr core open t7 --observe            # 只观看：不输入，不改变大小
 herdr core run --name review-1 -- reviewer "review src/x.rs"
 herdr core attention                    # 两个终端需要处理时显示 `hc !2`
@@ -207,9 +208,11 @@ herdr core attention next               # 跳到等待最久的终端
 
 core 窗格把程序自己报告的状态 (OSC 7501) 作为智能体状态，因此侧边栏、通知和 `agent wait` 与其他智能体一样工作：`working`、`blocked` (`permission`、`question` 或 `auth`)、`error` (计为需要处理)、`idle` 和 `turn done`。从未报告的终端显示 `no status`；程序结束后显示 `exited <code>`。没有窗格的终端在变为 blocked 或报告 error 时发出通知 (`[core.notify]`)；通知与 `notification show` 相同，按各客户端的 `ui.toast` 设置显示。
 
+侧边栏的智能体列表还会列出尚无窗格显示的运行中 core 智能体，并显示其文件夹和状态：由模板启动、报告自身状态或正在运行已知智能体的终端 (构建等辅助终端不列出)。点击后与 `--workspace` 相同：若已有窗格显示它 (core 窗格，或为它运行 `hc attach` 的本地窗格)，就转到该窗格；否则在以该终端的文件夹为文件夹的工作区中打开标签页，没有这样的工作区时就新建一个。文件夹按真实路径比较，因此同名的不同文件夹不会合并；在你选择终端之前焦点不会移动。从 `hc` 自己的列表中选择的 `hc attach`，在 core 报告其查看者 (`hello.features` 中有 `viewers`) 时可以识别；其他 core 只能识别 `hc attach <终端>`。
+
 ### 关闭、结束与重启
 
-关闭 core 窗格只会分离；终端继续在 core 中运行。Herdr 没有结束 core 终端的命令。程序结束后窗格保留最后的画面。Herdr 重启或连接断开后，Herdr 会重新连接同一个终端；终端由 core 的 id 和它在该 core 上的地址识别，因此不会把同一 socket 上的另一个 core 误认为它。更改 `[core]` 中决定连接目标的设置 (`enabled`、`session`、`socket`、`reconnect_max_seconds`) 会重新连接，core 窗格在新连接上重新连接；其他 `[core]` 设置无需重新连接即可生效。keep 终端 (`hc run --keep`) 失去程序后显示 `lost: waiting for shell`，直到 core 启动新的 shell。
+关闭 core 窗格只会分离；终端继续在 core 中运行。Herdr 没有结束 core 终端的命令。本地 control 窗格的程序确定结束后 (core 的记录显示 finished)，在其输出全部写入后，该窗格会变成同一文件夹中的 shell：最后的画面保留在提示符上方，后面跟着一行 `[hc t7 exited 0]` 这样的文字，程序不会再次运行。连接断开、等待新 shell 的 keep 终端、observe 窗格以及其他机器上的终端会保留最后的画面。Herdr 重启或连接断开后，Herdr 会重新连接同一个终端；终端由 core 的 id 和它在该 core 上的地址识别，因此不会把同一 socket 上的另一个 core 误认为它。更改 `[core]` 中决定连接目标的设置 (`enabled`、`session`、`socket`、`reconnect_max_seconds`) 会重新连接，core 窗格在新连接上重新连接；其他 `[core]` 设置无需重新连接即可生效。keep 终端 (`hc run --keep`) 失去程序后显示 `lost: waiting for shell`，直到 core 启动新的 shell。
 
 ### 视图与大小
 
@@ -217,4 +220,4 @@ core 窗格把程序自己报告的状态 (OSC 7501) 作为智能体状态，因
 
 ### 限制
 
-Herdr 通过 Unix socket 连接 herdr-core；尚不支持 Windows。Herdr 的机器 (`herdr machine`) 与 core 的机器 (`rohan/t7`) 是分开的。
+Herdr 通过 Unix socket 连接 herdr-core；尚不支持 Windows。Herdr 的机器 (`herdr machine`) 与 core 的机器 (`rohan/t7`) 是分开的。没有窗格的 core 智能体只列在单个 Herdr 服务器的侧边栏中，不会出现在汇总多个服务器的列表里，智能体快捷键 (`focus_agent`、`next_agent`) 也暂时无法到达它们。

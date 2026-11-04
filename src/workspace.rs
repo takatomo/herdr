@@ -572,6 +572,44 @@ impl Workspace {
         Ok((self.tabs.len() - 1, terminal, runtime))
     }
 
+    /// A workspace for `cwd` whose only tab's pane has no runtime yet (a core
+    /// pane waiting to attach).
+    pub(crate) fn new_pending(
+        cwd: PathBuf,
+        events: mpsc::Sender<AppEvent>,
+        render_notify: Arc<Notify>,
+        render_dirty: Arc<RenderSignal>,
+    ) -> (Self, PaneId, TerminalState) {
+        let (tab, pane_id, terminal) =
+            Tab::new_pending(1, cwd.clone(), events, render_notify, render_dirty);
+        let mut public_pane_numbers = HashMap::new();
+        public_pane_numbers.insert(pane_id, 1);
+        let (cached_git_space, cached_auto_label, cached_git_status_key) =
+            discover_workspace_git_identity(&cwd);
+        let workspace = Self {
+            id: generate_workspace_id(),
+            custom_name: None,
+            identity_cwd: cwd.clone(),
+            cached_identity_cwd: cwd.clone(),
+            cached_auto_label,
+            cached_git_status_key,
+            cached_git_branch: git_branch(&cwd),
+            cached_git_ahead_behind: None,
+            cached_git_space,
+            worktree_space: None,
+            metadata_tokens: crate::metadata_tokens::MetadataTokens::default(),
+            metadata_token_sequences: HashMap::new(),
+            public_pane_numbers,
+            next_public_pane_number: 2,
+            next_public_tab_number: 2,
+            tabs: vec![tab],
+            active_tab: 0,
+            #[cfg(test)]
+            test_runtimes: HashMap::new(),
+        };
+        (workspace, pane_id, terminal)
+    }
+
     /// A new tab whose pane has no runtime yet (a core pane waiting to attach).
     pub fn create_tab_pending(&mut self, cwd: PathBuf) -> (usize, PaneId, TerminalState) {
         let number = self.next_public_tab_number;

@@ -26,6 +26,10 @@ pub enum CorePlacementParam {
     Existing,
     Tab,
     Split,
+    /// Focus the pane already showing it (a Herdr pane, or a local pane
+    /// running `hc attach` for it), else a new tab in the workspace whose
+    /// folder is the terminal's, made when there is none.
+    Workspace,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, schemars::JsonSchema)]

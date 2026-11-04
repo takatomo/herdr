@@ -228,6 +228,7 @@ impl HeadlessServer {
         matches!(
             method,
             Method::CommandInvoke(_)
+                | Method::CoreTerminalOpen(_)
                 | Method::PaneClose(_)
                 | Method::PaneEditScrollback(_)
                 | Method::PaneMove(_)
@@ -249,6 +250,7 @@ impl HeadlessServer {
             method,
             Method::AgentFocus(_)
                 | Method::CommandInvoke(_)
+                | Method::CoreTerminalOpen(_)
                 | Method::LayoutSetSplitRatio(_)
                 | Method::PaneClose(_)
                 | Method::PaneCopyMotion(_)

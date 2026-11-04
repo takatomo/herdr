@@ -80,6 +80,18 @@ pub(crate) struct Terminal {
     pub foreground: Option<Foreground>,
     pub keep: bool,
     pub pid: Option<u32>,
+    /// Who views it now (a core that reports viewers, feature `viewers`).
+    pub viewers: Vec<Viewer>,
+}
+
+/// One viewer of a core terminal: its client's process on the core's own
+/// machine (unknown for remote and Herdr's own streams) and whether it only
+/// watches.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub(crate) struct Viewer {
+    pub pid: Option<u32>,
+    pub observe: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

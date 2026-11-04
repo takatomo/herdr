@@ -48,6 +48,7 @@ pub(crate) fn render_collapsed_sidebar(
     buffer: &mut Buffer,
     area: Rect,
     snapshot: &ClientShellSnapshot,
+    core_terminals: &[crate::protocol::endpoint::EndpointCoreTerminal],
     config: &ClientShellConfig,
     selected_workspace_id: Option<&str>,
     hits: &mut ShellHitMap,
@@ -169,6 +170,32 @@ pub(crate) fn render_collapsed_sidebar(
             Style::default().fg(status_color(agent.agent_status, palette)),
         );
         hits.agents.push((rect, pane_id));
+    }
+    // Core agents without a pane follow, unnumbered (no key picks them).
+    let listed = hits.agents.len();
+    let core_rows = super::agent_sidebar::core_terminal_rows(snapshot, core_terminals, config);
+    for (index, row) in core_rows
+        .into_iter()
+        .take((detail_content.height as usize).saturating_sub(listed))
+        .enumerate()
+    {
+        let rect = Rect::new(
+            detail_content.x,
+            detail_content.y + (listed + index) as u16,
+            detail_content.width,
+            1,
+        );
+        put_text(
+            buffer,
+            rect.x.saturating_add(2),
+            rect.y,
+            rect.width.saturating_sub(2),
+            status_icon(row.status, config.status_indicators),
+            Style::default().fg(status_color(row.status, palette)),
+        );
+        if let Some(target) = row.core {
+            hits.core_terminals.push((rect, target));
+        }
     }
     hits.sidebar_toggle = if area.is_empty() || workspace_area.width == 0 {
         Rect::default()
@@ -434,6 +461,7 @@ pub(crate) fn render_sidebar(
         buffer,
         detail_area,
         snapshot,
+        super::endpoints::active_core_terminals(state.endpoints, state.active_endpoint_id),
         config,
         state.agent_scroll,
         hits,

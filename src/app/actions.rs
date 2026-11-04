@@ -1502,6 +1502,9 @@ impl AppState {
                 seq,
                 session_ref,
             } => {
+                if self.stale_core_report(pane_id, &source) {
+                    return Vec::new();
+                }
                 if crate::agent_resume::is_reserved_native_state_source(&source, &agent_label) {
                     self.update_terminal_state(pane_id, |terminal| {
                         terminal.set_agent_session_ref(source, agent_label, session_ref, seq)
@@ -1564,6 +1567,9 @@ impl AppState {
                 })
                 .into_iter()
                 .collect(),
+            AppEvent::HookMetadataReported {
+                pane_id, source, ..
+            } if self.stale_core_report(pane_id, &source) => Vec::new(),
             AppEvent::HookMetadataReported {
                 pane_id,
                 source,
@@ -1675,6 +1681,18 @@ impl AppState {
             AppEvent::TabBarCommandFinished { .. } => Vec::new(),
             AppEvent::PluginCommandFinished { .. } => Vec::new(),
         }
+    }
+
+    /// A core pane's own report that arrives after the pane stopped showing
+    /// a core terminal (it became a shell): it must not make it an agent.
+    fn stale_core_report(&self, pane_id: PaneId, source: &str) -> bool {
+        source == crate::app::core::CORE_SOURCE
+            && self
+                .workspaces
+                .iter()
+                .find_map(|ws| ws.pane_state(pane_id))
+                .and_then(|pane| self.terminals.get(&pane.attached_terminal_id))
+                .is_none_or(|terminal| terminal.core.is_none())
     }
 
     fn update_terminal_state<F>(&mut self, pane_id: PaneId, update: F) -> Option<PaneStateUpdate>

@@ -2136,6 +2136,22 @@ async fn run_client_loop(
                                 }
                                 continue;
                             }
+                            Ok(endpoint::EndpointControlMessage::CoreTerminals(projection)) => {
+                                // The rows can change without a new snapshot: draw them now.
+                                if let Some(shell) = state.shell.as_mut() {
+                                    shell.set_endpoint_core_terminals(
+                                        &endpoint_id,
+                                        Some(generation),
+                                        projection,
+                                    );
+                                    let frame =
+                                        shell.compose(state.reported_size.0, state.reported_size.1);
+                                    if let Some(frame) = frame {
+                                        state.present_frozen_chrome(frame);
+                                    }
+                                }
+                                continue;
+                            }
                             Ok(endpoint::EndpointControlMessage::Ignored) => {
                                 debug!(%kind, "ignoring unknown endpoint control message");
                                 continue;

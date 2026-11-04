@@ -52,6 +52,8 @@ pub(crate) struct CoreShared {
     render: Mutex<Option<StreamId>>,
     attached: AtomicBool,
     ended: AtomicBool,
+    /// Whether every render attach asked for is done writing.
+    pub(crate) settle: RenderSettle,
     visible: AtomicBool,
     focus_sent: AtomicBool,
     /// (cols, rows) the core grid has, which the emulator follows.
@@ -72,6 +74,7 @@ impl CoreShared {
             ended: AtomicBool::new(false),
             visible: AtomicBool::new(false),
             focus_sent: AtomicBool::new(false),
+            settle: RenderSettle::new(),
             grid: AtomicU64::new(pack(u32::from(cols), u32::from(rows))),
             desired: AtomicU64::new(pack(u32::from(cols), u32::from(rows))),
             cell_px: AtomicU64::new(0),
@@ -119,6 +122,45 @@ impl CoreShared {
         self.mode == CoreMode::Control
             && self.attached.load(Ordering::Acquire)
             && !self.ended.load(Ordering::Acquire)
+    }
+}
+
+/// Whether every render attach asked for so far was handled and nothing can
+/// still write output. The app counts its requests; the render thread marks
+/// the request it served once no stream or attach of it is left. An older
+/// stream ending after a newer request never marks that request.
+pub(crate) struct RenderSettle {
+    requested: AtomicU64,
+    idle: AtomicU64,
+}
+
+impl RenderSettle {
+    /// The first attach is request 1, not yet served.
+    pub(crate) fn new() -> Self {
+        Self {
+            requested: AtomicU64::new(1),
+            idle: AtomicU64::new(0),
+        }
+    }
+
+    /// A new render attach is asked for; returns its number.
+    pub(crate) fn request(&self) -> u64 {
+        self.requested.fetch_add(1, Ordering::AcqRel) + 1
+    }
+
+    /// The render thread served request `generation` and holds no stream.
+    pub(crate) fn idle_at(&self, generation: u64) {
+        self.idle.fetch_max(generation, Ordering::AcqRel);
+    }
+
+    /// A request that never reached the render thread: nothing will write.
+    pub(crate) fn abandon(&self) {
+        self.idle
+            .fetch_max(self.requested.load(Ordering::Acquire), Ordering::AcqRel);
+    }
+
+    pub(crate) fn settled(&self) -> bool {
+        self.idle.load(Ordering::Acquire) >= self.requested.load(Ordering::Acquire)
     }
 }
 
@@ -276,7 +318,15 @@ impl CoreStreamIo {
     }
 
     pub(crate) fn reattach(&self, spec: CoreAttachSpec) {
-        let _ = self.render_tx.send(RenderMsg::Reattach(spec));
+        let generation = self.shared.settle.request();
+        if self
+            .render_tx
+            .send(RenderMsg::Reattach(spec, generation))
+            .is_err()
+        {
+            // No render thread: nothing will write for this request.
+            self.shared.settle.abandon();
+        }
     }
 
     pub(crate) fn shutdown(&self) {
@@ -295,7 +345,8 @@ impl CoreStreamIo {
 enum RenderMsg {
     Stream(StreamEvent),
     SizeHint,
-    Reattach(CoreAttachSpec),
+    /// Attach again; the number is the app's request (see `RenderSettle`).
+    Reattach(CoreAttachSpec, u64),
     Shutdown,
 }
 
@@ -419,6 +470,7 @@ pub(super) fn start(
             pending: None,
             resync: None,
             reported_end: false,
+            generation: 1,
         }
         .run(render_rx, spec);
     })?;
@@ -442,6 +494,8 @@ struct RenderThread {
     /// Present when the core cannot announce grid changes in the stream.
     resync: Option<RenderResync>,
     reported_end: bool,
+    /// The app's render-attach request being served (see `RenderSettle`).
+    generation: u64,
 }
 
 impl RenderThread {
@@ -471,7 +525,10 @@ impl RenderThread {
                         resync.on_size_hint(Instant::now());
                     }
                 }
-                Some(RenderMsg::Reattach(spec)) => self.attach(spec),
+                Some(RenderMsg::Reattach(spec, generation)) => {
+                    self.generation = generation;
+                    self.attach(spec);
+                }
             }
         }
     }
@@ -527,7 +584,9 @@ impl RenderThread {
         let Some(resync) = self.resync.as_mut() else {
             return;
         };
-        if resync.on_tick(Instant::now()) == ResyncAction::Reattach {
+        // Only a stream still open is replaced: after its end, a leftover
+        // timer must not start an attach for a request already served.
+        if resync.on_tick(Instant::now()) == ResyncAction::Reattach && self.current.is_some() {
             let path = self.path.clone();
             self.pending = Some(self.attach_render(&path, 0, None));
         }
@@ -629,6 +688,10 @@ impl RenderThread {
                         return;
                     }
                 }
+                if self.current.is_none() {
+                    // No render stream came of this request: nothing will write.
+                    self.shared.settle.idle_at(self.generation);
+                }
                 self.report_attach(Err(error));
             }
         }
@@ -656,6 +719,9 @@ impl RenderThread {
             }
         }
         self.shared.set_control(None);
+        // Every byte of this request's streams is written: say so before the
+        // app hears of the end.
+        self.shared.settle.idle_at(self.generation);
         if self.reported_end {
             return;
         }
@@ -666,6 +732,34 @@ impl RenderThread {
             reason,
             interrupted,
         });
+    }
+}
+
+#[cfg(test)]
+mod settle_tests {
+    use super::RenderSettle;
+
+    #[test]
+    fn an_older_stream_ending_never_settles_a_newer_attach() {
+        let settle = RenderSettle::new();
+        assert!(!settle.settled(), "the first attach is still out");
+        settle.idle_at(1);
+        assert!(settle.settled());
+
+        // A reattach is asked for; the old stream's end is handled after it.
+        let second = settle.request();
+        assert_eq!(second, 2);
+        assert!(!settle.settled());
+        settle.idle_at(1);
+        assert!(!settle.settled(), "an old end settled a newer attach");
+        settle.idle_at(2);
+        assert!(settle.settled());
+
+        // A request the render thread never got writes nothing.
+        settle.request();
+        assert!(!settle.settled());
+        settle.abandon();
+        assert!(settle.settled());
     }
 }
 
